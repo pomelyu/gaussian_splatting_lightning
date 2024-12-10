@@ -12,6 +12,7 @@ dependencies:
   - tqdm
   - pip:
     - submodules/diff-gaussian-rasterization
+    - submodules/fused-ssim
     - scipy
     - imageio
     - ninja
