@@ -12,7 +12,7 @@ dependencies:
   - tqdm
   - pip:
     - submodules/diff-gaussian-rasterization
-    - submodules/simple-knn
+    - scipy
     - imageio
     - ninja
     - numpy<2

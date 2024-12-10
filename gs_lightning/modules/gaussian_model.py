@@ -3,9 +3,9 @@ import numpy as np
 import torch
 from plyfile import PlyData
 from plyfile import PlyElement
-from simple_knn._C import distCUDA2
 from torch import nn
 
+from gs_lightning.utils.math import distCUDA2
 from gs_lightning.utils.math import inverse_sigmoid
 from gs_lightning.utils.sh import rgb2sh0
 
@@ -49,8 +49,13 @@ class GaussianModel(nn.Module):
         rotation = torch.zeros((N, 4))
         rotation[:, 0] = 1
 
-        # TODO: why
-        dist = torch.clamp_min(distCUDA2(xyz.cuda()), 0.0000001)
+        # Find the average distance from the N(4?) closest points.
+        # Then use it as a initial scale/size of a gaussian splat.
+        # 
+        # The function is only used for initialization
+        # Unlike original code that uses distCUDA2 from simple-knn,
+        # I use a python implementation here
+        dist = torch.clamp_min(distCUDA2(xyz), 0.0000001)
         scale = self.inversed_activation_scaling(torch.sqrt(dist))[..., None].repeat(1, 3)
 
         # initialize opacity to inverse_sigmoid(0.1),
