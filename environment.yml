@@ -4,6 +4,7 @@ channels:
   - nvidia
   - defaults
 dependencies:
+  - kornia
   - python=3.11.11
   - pip=24.3.1
   - pytorch=2.0.1

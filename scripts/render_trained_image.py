@@ -12,7 +12,7 @@ from diff_gaussian_rasterization import GaussianRasterizer
 from pycolmap import MapCameraIdToCamera
 from pycolmap import MapImageIdToImage
 
-from gs_lightning.third_party.gaussian_splatting.scene import GaussianModel
+from gs_lightning.modules import GaussianModel
 from gs_lightning.utils.camera import get_projection_matrix
 
 
@@ -34,8 +34,8 @@ def main():
     out_dir.mkdir(exist_ok=True, parents=True)
 
     gaussians = GaussianModel(sh_degree=args.sh_degree)
-    gaussians.load_ply(args.model)
-    # TODO: what is gaussian.create_from_pcd
+    gaussians.load_model_ply(args.model)
+    gaussians.to(device)
 
     background = [1,1,1] if args.white_background else [0, 0, 0]
     background = torch.Tensor(background).to(device)
@@ -94,13 +94,13 @@ def main():
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
     rendered_image, radii, depth_image = rasterizer(
-        means3D=gaussians.get_xyz,
+        means3D=gaussians.get_xyz(),
         means2D=None,
-        shs=gaussians.get_features,
+        shs=gaussians.get_features(),
         colors_precomp=None,
-        opacities=gaussians.get_opacity,
-        scales=gaussians.get_scaling,
-        rotations=gaussians.get_rotation,
+        opacities=gaussians.get_opacity(),
+        scales=gaussians.get_scaling(),
+        rotations=gaussians.get_rotation(),
         cov3D_precomp=None,
     )
     rendered_image = rendered_image.clamp(0, 1)
