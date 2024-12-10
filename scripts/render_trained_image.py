@@ -13,7 +13,7 @@ from pycolmap import MapCameraIdToCamera
 from pycolmap import MapImageIdToImage
 
 from gs_lightning.third_party.gaussian_splatting.scene import GaussianModel
-from gs_lightning.utils import get_projection_matrix
+from gs_lightning.utils.camera import get_projection_matrix
 
 
 def main():
@@ -61,8 +61,7 @@ def main():
     scale = 1 / args.down_scale
     image = iio.v3.imread(Path(args.image) / image_path)
     H, W = image.shape[:2]
-    # H, W = int(H*scale), int(W*scale)
-    H, W = 2400, 1600
+    H, W = int(H*scale), int(W*scale)
     image = cv2.resize(image, (W, H))
 
     device = "cuda"
@@ -110,7 +109,9 @@ def main():
     rendered_image = rendered_image.cpu()
 
     vis = torch.cat([gt, rendered_image], 2)
-    torchvision.utils.save_image(vis, out_dir / f"out_{args.frame}.jpg")
+    out_path = out_dir / f"out_{args.frame}.jpg"
+    torchvision.utils.save_image(vis, out_path)
+    print(f"Save result to {out_path}")
 
 
 if __name__ == "__main__":

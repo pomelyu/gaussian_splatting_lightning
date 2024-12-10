@@ -11,8 +11,8 @@ from pycolmap import MapCameraIdToCamera
 from pycolmap import MapImageIdToImage
 from torch.utils.data import Dataset
 
-from gs_lightning.utils import get_projection_matrix
-from gs_lightning.utils import load_image
+from gs_lightning.utils.camera import get_projection_matrix
+from gs_lightning.utils.image import load_image
 
 
 class ColmapDataset(Dataset):

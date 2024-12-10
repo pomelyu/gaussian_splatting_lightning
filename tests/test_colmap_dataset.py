@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from gs_lightning.datasets import ColmapDataset
-from gs_lightning.utils import mkdir
+from gs_lightning.utils.os import mkdir
 
 COLMAP_PATH = "C:/Users/cychien-desktop/Documents/database/NeRF/Kanade_360_colmap/sparse/0"
 IMAGE_FOLDER = "C:/Users/cychien-desktop/Documents/database/NeRF/Kanade_360_colmap/images"
