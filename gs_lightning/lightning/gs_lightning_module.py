@@ -1,6 +1,8 @@
 from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Tuple
+import numpy as np
+
 import mlconfig
 import torch
 from diff_gaussian_rasterization import GaussianRasterizationSettings
@@ -12,6 +14,7 @@ from torch import nn
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler
+from gs_lightning.utils.lightning import MLFlowLogger
 
 
 @dataclass
@@ -63,6 +66,7 @@ class CFGScheduler:
 class GSLightningModule(LightningModule):
     def __init__(
         self,
+        meta: dict,
         cfg_trainer: DictConfig,
         cfg_model: DictConfig,
         cfg_optimizer: DictConfig,
@@ -83,6 +87,9 @@ class GSLightningModule(LightningModule):
 
         self.criterion_recon = nn.L1Loss()
         self.criterion_ssim = lambda x, y: 1 - fused_ssim(x, y)
+
+        self.meta = meta
+        self.show_valid_idx = []
 
     def train_dataloader(self):
         return mlconfig.instantiate(self.cfg_train_dataloader)
@@ -124,13 +131,35 @@ class GSLightningModule(LightningModule):
 
         self.log_dict(loss_log, prog_bar=True, logger=False, on_step=True)
         self.log_dict({f"train_{k}": v for k, v in loss_log.items()}, prog_bar=False, logger=True, on_step=True, on_epoch=False)
+
+        if self.global_step % self.cfg_trainer.display_interval == 0:
+            mlflow_logger: MLFlowLogger = self.logger
+            image = self.get_visuals(data_dict)
+            mlflow_logger.log_image(image, f"train_image-{self.global_step:0>8d}.jpg", artifact_path="train_image")
+            mlflow_logger.log_image(image, "train_image-latest.jpg")
+
         return loss
+
+    def on_validation_epoch_start(self):
+        if isinstance(self.trainer.val_dataloaders, list):
+            min_n_batches = min(len(dataloader) for dataloader in self.trainer.val_dataloaders)
+        else:
+            min_n_batches = len(self.trainer.val_dataloaders)
+        self.show_valid_idx = [0, np.random.randint(1, min_n_batches)]
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx: int, dataloader_idx: int = 0):
         data_dict = self.process_data(batch)
         _, loss_log, results = self.calculate_loss(data_dict, calculate_screenspace_points=False)
         self.log_dict({f"valid_{k}": v for k, v in loss_log.items()}, prog_bar=False, logger=True)
+
+        if batch_idx in self.show_valid_idx:
+            mlflow_logger: MLFlowLogger = self.logger
+            image = self.get_visuals(data_dict)
+            prefix = "valid0_image" if batch_idx == 0 else "valid_image"
+            mlflow_logger.log_image(image, f"{prefix}-{self.global_step:0>8d}.jpg", artifact_path=prefix)
+            mlflow_logger.log_image(image, f"{prefix}-latest.jpg")
+
         return loss_log
 
     def calculate_loss(self, data_dict: dict, calculate_screenspace_points: bool = True) -> Tuple[torch.Tensor, dict, dict]:
@@ -215,3 +244,16 @@ class GSLightningModule(LightningModule):
         )
 
         return rendered_image, radii, depth_image, screenspace_points
+
+    @torch.no_grad()
+    def get_visuals(self, data_dict) -> torch.Tensor:
+        rendered_image, radii, depth_image, screenspace_points = self.render(
+            data_dict,
+            self.cfg_trainer.compute_cov3D_python,
+            self.cfg_trainer.convert_SHs_python,
+            self.cfg_trainer.seperate_SHs,
+            calculate_screenspace_points=False,
+        )
+        image = data_dict["image"]
+        vis = torch.cat([image, rendered_image, depth_image.expand_as(image)], -1)
+        return vis
