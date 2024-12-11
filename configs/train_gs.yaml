@@ -39,4 +39,3 @@ data:
   white_background: True
   z_near: 0.01
   z_far: 100.0
-  num_workers: 0

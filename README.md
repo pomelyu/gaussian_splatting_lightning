@@ -35,6 +35,5 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 - [] look into cuda code
 - [] enable full controls of lightning CLI
 - [] connect to official GUI
-- [] enable `num_workers > 0` by removing pycolmap objects since they can't be pickled
 - [] add depth regularization
 - [] support nerf dataset

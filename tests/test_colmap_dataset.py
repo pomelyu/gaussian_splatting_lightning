@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import pycolmap
 import torch
 from pycolmap import MapPoint3DIdToPoint3D
 from torch.utils.data import DataLoader
@@ -19,8 +20,9 @@ def test_colmap_dataset():
     )
     dataloader = DataLoader(dataset, batch_size=4, drop_last=False, shuffle=False)
 
+    reconstruction = pycolmap.Reconstruction(COLMAP_PATH)
     # {1: Point3D(xyz=[0.116297, -0.52869, -0.570282], color=[80, 67, 48], error=0.442101, track=Track(length=2))}
-    points: MapPoint3DIdToPoint3D = dataset.reconstruction.points3D
+    points: MapPoint3DIdToPoint3D = reconstruction.points3D
     points3d = torch.Tensor(np.array([[*pt.xyz, 1.0] for pt in points.values()]))
     points3d_colors = np.array([pt.color for pt in points.values()], dtype=np.uint8)
 
