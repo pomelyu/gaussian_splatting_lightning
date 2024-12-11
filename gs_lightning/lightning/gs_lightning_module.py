@@ -32,6 +32,7 @@ class CFGTrainer:
     densify_since: int = 500
     densify_util: int = 15_000
     densify_grad_threshold: int = 0.0002
+    sh_degree_step_interval: int = 1000
     # TODO: add depth regularization
     # rendering options
     compute_cov3D_python: bool = False      # compute 3D covariances by gaussian model instead of rasterizer
@@ -128,6 +129,10 @@ class GSLightningModule(LightningModule):
         loss, loss_log, results = self.calculate_loss(data_dict)
 
         # TODO: Densification
+
+        # increate sh_degree
+        if self.global_step != 0 and self.global_step % self.cfg_trainer.sh_degree_step_interval == 0:
+            self.gaussians.step_sh_degree()
 
         self.log_dict(loss_log, prog_bar=True, logger=False, on_step=True)
         self.log_dict({f"train_{k}": v for k, v in loss_log.items()}, prog_bar=False, logger=True, on_step=True, on_epoch=False)

@@ -97,6 +97,9 @@ class GaussianModel(nn.Module):
 
         self.active_sh_degree = int(np.sqrt(features_rest.shape[-1] + 1))
 
+    def step_sh_degree(self):
+        self.active_sh_degree = min(self.active_sh_degree + 1, self.max_sh_degree)
+
     @classmethod
     def load_vertices_properties(cls, vertices: PlyElement, name: str) -> torch.Tensor:
         property_names = [p.name for p in vertices.properties if p.name.startswith(name)]

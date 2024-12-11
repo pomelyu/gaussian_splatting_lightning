@@ -26,7 +26,6 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 ```
 
 ## TODO(sorted by priority)
-- [] enable progressively increasing sh_degree
 - [] add densification
 - [] add self.spatial_lr_scale
 - [] support SpareAdam
