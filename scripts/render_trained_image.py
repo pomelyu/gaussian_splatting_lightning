@@ -103,6 +103,7 @@ def main():
         rotations=gaussians.get_rotation(),
         cov3D_precomp=None,
     )
+
     rendered_image = rendered_image.clamp(0, 1)
 
     gt = torch.Tensor(np.moveaxis(image / 255., -1, 0))

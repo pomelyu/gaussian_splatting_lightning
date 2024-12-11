@@ -1,0 +1,42 @@
+exp_name: GaussianSplatting
+run_name: colmap_kanade_360
+mlflow_folder: ./mlruns
+
+COLMAP_FOLDER: C:/Users/cychien-desktop/Documents/database/NeRF/Kanade_360_colmap
+
+trainer: GSLightningModule
+cfg_trainer:
+  num_iters: 30_000
+  print_interval: 100
+  display_interval: 1000
+  valid_interval: 1000
+  w_ssim: 0.2
+
+cfg_model:
+  sh_degree: 3
+  colmap_ply: ${COLMAP_FOLDER}/sparse/0/points3D.ply
+
+cfg_optimizer:
+  optimizer:
+    name: Adam
+    lr: 0.0
+    eps: 1.e-15
+  xyz_lr_init: 0.00016
+
+cfg_scheduler:
+  param: xyz
+  lr_init: ${cfg_optimizer.xyz_lr_init}
+  max_steps: ${cfg_trainer.num_iters}
+
+data:
+  name: ColmapDataModule
+  num_iters: ${cfg_trainer.num_iters}
+  colmap_path: ${COLMAP_FOLDER}/sparse/0
+  image_folder: ${COLMAP_FOLDER}/images
+  train_idx_file: ${COLMAP_FOLDER}/train_image_idx.txt
+  valid_idx_file: ${COLMAP_FOLDER}/valid_image_idx.txt
+  resize_to: 1200
+  white_background: True
+  z_near: 0.01
+  z_far: 100.0
+  num_workers: 0

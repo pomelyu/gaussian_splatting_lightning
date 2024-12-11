@@ -5,6 +5,7 @@ channels:
   - defaults
 dependencies:
   - kornia
+  - mlflow
   - python=3.11.11
   - pip=24.3.1
   - pytorch=2.0.1
@@ -15,11 +16,13 @@ dependencies:
     - submodules/fused-ssim
     - scipy
     - imageio
+    - mlconfig
     - ninja
     - numpy<2
     - opencv-python
     - plyfile
     - pillow==9.4.0
     - pycolmap
+    - pytorch-lightning
     - torchaudio==2.0.2
     - torchvision==0.15.2

@@ -70,6 +70,8 @@ class GaussianModel(nn.Module):
         self._rotation = nn.Parameter(rotation)
         self._opacity = nn.Parameter(opacity)
 
+        # TODO: add self._exposure
+
     def load_model_ply(self, ply_path: str) -> None:
         plyData = PlyData.read(ply_path)
         vertices: PlyElement = plyData["vertex"]

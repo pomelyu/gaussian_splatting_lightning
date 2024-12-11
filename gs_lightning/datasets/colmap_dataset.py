@@ -4,17 +4,24 @@ from typing import Optional
 from typing import Union
 
 import cv2
+import mlconfig
 import numpy as np
 import pycolmap
 import torch
 from pycolmap import MapCameraIdToCamera
 from pycolmap import MapImageIdToImage
+from pytorch_lightning import LightningDataModule
+from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 
 from gs_lightning.utils.camera import get_projection_matrix
 from gs_lightning.utils.image import load_image
 
+from .dataloader import ConfigTrainDataloader
+from .dataloader import ConfigValidDataloader
 
+
+@mlconfig.register()
 class ColmapDataset(Dataset):
     def __init__(
         self,
@@ -44,19 +51,19 @@ class ColmapDataset(Dataset):
         # {1: Image(image_id=1, camera_id=1, name="_DSC8874.JPG", triangulated=657/9322)}
         self.image_info: MapImageIdToImage = self.reconstruction.images
 
-        self.image_idxes = ColmapDataset.load_image_idx(image_idx)
-        if self.image_idxes is None:
-            self.image_idxes = list(self.image_info.keys())
+        self.image_indices = ColmapDataset.load_image_idx(image_idx)
+        if self.image_indices is None:
+            self.image_indices = list(self.image_info.keys())
         self.cached_data = {}
 
     def __len__(self):
-        return len(self.image_idxes)
+        return len(self.image_indices)
     
     def __getitem__(self, index):
         if index in self.cached_data:
             return self.cached_data[index]
 
-        image_idx = self.image_idxes[index]
+        image_idx = self.image_indices[index]
         image_info: MapImageIdToImage = self.image_info[image_idx]
         camera_info: MapCameraIdToCamera = self.camera_info[image_info.camera_id]
 
@@ -91,15 +98,15 @@ class ColmapDataset(Dataset):
         return data
 
     @classmethod
-    def load_image_idx(cls, image_idx: Union[List[int], str]) -> Optional[List[int]]:
+    def load_image_idx(cls, image_idx: Optional[Union[List[int], str]] = None) -> Optional[List[int]]:
         if image_idx is None:
             return None
         elif isinstance(image_idx, list):
             image_idx = np.array(image_idx)
         else:
-            image_idx = np.loadtxt(image_idx, delimiter=",")
+            image_idx = np.loadtxt(image_idx, delimiter=",", dtype=np.int64)
 
-        if (image_idx.shape) != 1:
+        if (image_idx.ndim) != 1:
             raise ValueError("image_idx should be a list of integar")
         return image_idx
 
@@ -125,3 +132,56 @@ class ColmapDataset(Dataset):
 
         image = torch.Tensor(np.moveaxis(image, -1, 0))
         return image
+
+
+@mlconfig.register()
+class ColmapDataModule(LightningDataModule):
+    def __init__(
+        self,
+        num_iters: int,
+        colmap_path: str,
+        image_folder: str,
+        train_idx_file: str,
+        valid_idx_file: str,
+        mask_folder: Optional[str] = None,
+        resize_to: Optional[int] = None,
+        downscale: Optional[float] = None,
+        white_background: bool = False,
+        z_near: float = 0.01,
+        z_far: float = 100.0,
+        num_workers: int = 0,
+    ): 
+        super().__init__()
+
+        def create_dataset(idx_file):
+            return ColmapDataset(
+                colmap_path=colmap_path,
+                image_folder=image_folder,
+                image_idx=idx_file,
+                mask_folder=mask_folder,
+                resize_to=resize_to,
+                downscale=downscale,
+                white_background=white_background,
+                z_near=z_near,
+                z_far=z_far,
+            )
+
+        self.train_dataset = create_dataset(train_idx_file)
+        self.valid_dataset = create_dataset(valid_idx_file)
+        self.num_iters = num_iters
+        self.num_workers = num_workers
+
+    def train_dataloader(self) -> DataLoader:
+        return ConfigTrainDataloader(
+            dataset=self.train_dataset,
+            num_iters=self.num_iters,
+            batch_size=1,
+            num_workers=self.num_workers,
+        )
+    
+    def val_dataloader(self):
+        return ConfigValidDataloader(
+            dataset=self.valid_dataset,
+            batch_size=1,
+            num_workers=self.num_workers,
+        )
