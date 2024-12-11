@@ -1,3 +1,6 @@
+from typing import List
+from typing import Tuple
+
 import kornia as K
 import numpy as np
 import torch
@@ -102,8 +105,36 @@ class GaussianModel(nn.Module):
         properties = np.stack(properties, -1)
         return torch.Tensor(properties)
 
+    @classmethod
+    def create_structure_dtype(cls, data: torch.Tensor, prefix: str) -> Tuple[np.ndarray, List[str]]:
+        data = data.flatten(1).detach().cpu().numpy()
+        structure_dtype = []
+        for i in range(data.shape[1]):
+            structure_dtype.append((f"{prefix}_{i}", "f4"))
+        return data, structure_dtype
+
     def save_ply(self, ply_path: str) -> bool:
-        return True
+        xyz = self._xyz.detach().cpu().numpy()
+        xyz_dtype = [("x", "f4"), ("y", "f4"), ("z", "f4")]
+
+        normal = np.zeros_like(xyz)
+        normal_dtype = [("nx", "f4"), ("ny", "f4"), ("nz", "f4")]
+
+        f_dc, f_dc_dtype = GaussianModel.create_structure_dtype(self._features_dc.transpose(1, 2), "f_dc")
+        f_rest, f_rest_dtype = GaussianModel.create_structure_dtype(self._features_rest.transpose(1, 2), "f_rest")
+
+        opacity = self._opacity.detach().cpu().numpy()
+        opacity_dtype = [("opacity", "f4")]
+
+        scale, scale_dtype = GaussianModel.create_structure_dtype(self._scaling, "scale")
+        rotation, rotation_dtype = GaussianModel.create_structure_dtype(self._rotation, "rot")
+
+        attributes = np.concatenate([xyz, normal, f_dc, f_rest, opacity, scale, rotation], -1)
+        structure_dtype = xyz_dtype + normal_dtype + f_dc_dtype + f_rest_dtype + opacity_dtype + scale_dtype + rotation_dtype
+
+        attributes = np.array([tuple(attr) for attr in attributes], dtype=structure_dtype)
+        element = PlyElement.describe(attributes, "vertex")
+        PlyData([element]).write(ply_path)
 
     def get_xyz(self) -> torch.Tensor:
         return self._xyz

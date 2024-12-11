@@ -162,6 +162,16 @@ class GSLightningModule(LightningModule):
 
         return loss_log
 
+    def on_validation_end(self):
+        mlflow_logger: MLFlowLogger = self.logger
+        mlflow_logger.log_object(
+            obj=self.gaussians,
+            obj_name=f"point_cloud-{self.global_step:0>8d}.ply",
+            dump_func=lambda gs, p: gs.save_ply(p),
+            artifact_path="point_cloud",
+        )
+        return super().on_validation_end()
+
     def calculate_loss(self, data_dict: dict, calculate_screenspace_points: bool = True) -> Tuple[torch.Tensor, dict, dict]:
         rendered_image, radii, depth_image, screenspace_points = self.render(
             data_dict,
