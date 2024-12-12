@@ -27,7 +27,6 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 
 ## TODO(sorted by priority)
 - [] add densification
-- [] add self.spatial_lr_scale
 - [] support SpareAdam
 - [] figure out the usage of exposure
 - [] look into cuda code

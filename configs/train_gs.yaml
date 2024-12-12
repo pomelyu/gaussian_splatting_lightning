@@ -21,6 +21,7 @@ cfg_optimizer:
     name: Adam
     lr: 0.0
     eps: 1.e-15
+  colmap_path: ${COLMAP_FOLDER}/sparse/0
   xyz_lr_init: 0.00016
 
 cfg_scheduler:

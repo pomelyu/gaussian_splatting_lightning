@@ -1,9 +1,9 @@
 from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Tuple
-import numpy as np
 
 import mlconfig
+import numpy as np
 import torch
 from diff_gaussian_rasterization import GaussianRasterizationSettings
 from diff_gaussian_rasterization import GaussianRasterizer
@@ -14,6 +14,7 @@ from torch import nn
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler
+from gs_lightning.utils.colmap import get_nerf_norm
 from gs_lightning.utils.lightning import MLFlowLogger
 
 
@@ -47,6 +48,7 @@ class CFGModel:
 @dataclass
 class CFGOptimizer:
     optimizer: DictConfig
+    colmap_path: str
     xyz_lr_init: float = 0.00016
     feature_lr: float = 0.0025
     opacity_lr: float = 0.025
@@ -101,8 +103,11 @@ class GSLightningModule(LightningModule):
         return
 
     def configure_optimizers(self):
-        # TODO: self.spatial_lr_scale, which is initialized to getNerfppNorm(cam_info)["radius"]
         # TODO: enable SpareAdam
+        # getNerfppNorm(cam_info)["radius"]
+        spatial_lr_scale = get_nerf_norm(self.cfg_optimizer.colmap_path)["radius"]
+        self.cfg_optimizer.xyz_lr_init *= spatial_lr_scale
+
         lr_features_rest = self.cfg_optimizer.feature_lr / self.cfg_optimizer.r_dc2rest
         parameters = [
             {"params": [self.gaussians._xyz], "lr": self.cfg_optimizer.xyz_lr_init, "name": "xyz"},
@@ -113,6 +118,10 @@ class GSLightningModule(LightningModule):
             {"params": [self.gaussians._rotation], "lr": self.cfg_optimizer.rotation_lr, "name": "rotation_dc"},
         ]
         optimizer = mlconfig.instantiate(self.cfg_optimizer.optimizer, params=parameters)
+
+        assert self.cfg_scheduler.param == "xyz"
+        self.cfg_scheduler.lr_init *= spatial_lr_scale
+        self.cfg_scheduler.lr_final *= spatial_lr_scale
         scheduler = GSWarmUpExponentialDecayScheduler(optimizer=optimizer, **asdict(self.cfg_scheduler))
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
 
