@@ -100,6 +100,7 @@ class GSLightningModule(LightningModule):
 
         self.meta = meta
         self.show_valid_idx = []
+        self.cached_results = None
 
     def train_dataloader(self):
         return mlconfig.instantiate(self.cfg_train_dataloader)
@@ -139,6 +140,25 @@ class GSLightningModule(LightningModule):
             data_dict[k] = v[0]
         return data_dict
 
+    def on_train_batch_start(self, batch, batch_idx):
+        # Peform densification based on the results of the previous batch
+        # It's not possible to do this in the end of a training_step,
+        # because this process modifies parameters and thus causes the incorect visuals and validation losses
+        if self.cached_results is None:
+            return super().on_train_batch_start(batch, batch_idx)
+ 
+        if self.global_step < self.cfg_trainer.densify_util:
+            self.densify_gaussian(self.cached_results["radii2D"], self.cached_results["screenspace_gradient"])
+
+        if self.global_step % self.cfg_trainer.opacity_reset_interval == 0:
+            self.gaussians.reset_opacity()
+
+        # increate sh_degree
+        if self.global_step % self.cfg_trainer.sh_degree_step_interval == 0:
+            self.gaussians.step_sh_degree()
+
+        return super().on_train_batch_start(batch, batch_idx)
+
     def training_step(self, batch, batch_idx: int, dataloader_idx: int = 0) -> torch.Tensor:
         data_dict = self.process_data(batch)
         loss, loss_log, results = self.calculate_loss(data_dict)
@@ -151,15 +171,10 @@ class GSLightningModule(LightningModule):
         scheduler: torch.optim.lr_scheduler.LRScheduler = self.lr_schedulers()
         scheduler.step()
 
-        if self.global_step < self.cfg_trainer.densify_util:
-            self.densify_gaussian(results["radii2D"], results["screenspace_points"])
-
-        if self.global_step != 0 and self.global_step % self.cfg_trainer.opacity_reset_interval == 0:
-            self.gaussians.reset_opacity()
-
-        # increate sh_degree
-        if self.global_step != 0 and self.global_step % self.cfg_trainer.sh_degree_step_interval == 0:
-            self.gaussians.step_sh_degree()
+        self.cached_results = {
+            "radii2D": results["radii2D"].detach(),
+            "screenspace_gradient": results["screenspace_points"].grad.detach(),
+        }
 
         self.log_dict(loss_log, prog_bar=True, logger=False, on_step=True)
         self.log_dict({f"train_{k}": v for k, v in loss_log.items()}, prog_bar=False, logger=True, on_step=True, on_epoch=False)
@@ -173,10 +188,10 @@ class GSLightningModule(LightningModule):
 
         return loss
 
-    def densify_gaussian(self, radii2D: torch.Tensor, screespace_points: torch.Tensor) -> None:
+    def densify_gaussian(self, radii2D: torch.Tensor, screenspace_gradient: torch.Tensor) -> None:
         visible_mask = (radii2D > 0)
         self.gaussians.update_max_radii2D(radii2D, visible_mask)
-        self.gaussians.update_xyz_gradient(screespace_points, visible_mask)
+        self.gaussians.update_xyz_gradient(screenspace_gradient, visible_mask)
 
         cfg = self.cfg_trainer
         if self.global_step > cfg.densify_since and self.global_step % cfg.densify_interval == 0:

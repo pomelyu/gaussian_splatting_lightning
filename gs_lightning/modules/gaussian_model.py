@@ -165,8 +165,7 @@ class GaussianModel(nn.Module):
         self.max_radii2D[visible_mask] = torch.max(self.max_radii2D[visible_mask], radii[visible_mask])
 
     @torch.no_grad()
-    def update_xyz_gradient(self, screenspace_points: torch.Tensor, visible_mask: torch.Tensor) -> None:
-        screenspace_gradient = screenspace_points.grad
+    def update_xyz_gradient(self, screenspace_gradient: torch.Tensor, visible_mask: torch.Tensor) -> None:
         self.xyz_grad_accum[visible_mask] += torch.norm(screenspace_gradient[visible_mask, :2], dim=1)
         self.xyz_grad_count[visible_mask] += 1
 
