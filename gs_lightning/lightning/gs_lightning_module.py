@@ -117,7 +117,7 @@ class GSLightningModule(LightningModule):
             {"params": [self.gaussians._scaling], "lr": self.cfg_optimizer.scaling_lr, "name": "scaling_dc"},
             {"params": [self.gaussians._rotation], "lr": self.cfg_optimizer.rotation_lr, "name": "rotation_dc"},
         ]
-        optimizer = mlconfig.instantiate(self.cfg_optimizer.optimizer, params=parameters)
+        optimizer = mlconfig.instantiate(self.cfg_optimizer.optimizer, parameters)
 
         assert self.cfg_scheduler.param == "xyz"
         self.cfg_scheduler.lr_init *= spatial_lr_scale
