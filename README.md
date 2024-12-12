@@ -26,11 +26,10 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 ```
 
 ## TODO(sorted by priority)
-- [] add densification
-- [] support SpareAdam
-- [] figure out the usage of exposure
-- [] look into cuda code
-- [] enable full controls of lightning CLI
-- [] connect to official GUI
-- [] add depth regularization
-- [] support nerf dataset
+- [ ] support SpareAdam
+- [ ] look into cuda code
+- [ ] figure out the usage of exposure
+- [ ] enable full controls of lightning CLI
+- [ ] connect to official GUI
+- [ ] add depth regularization
+- [ ] support nerf dataset

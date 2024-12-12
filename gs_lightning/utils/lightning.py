@@ -17,8 +17,8 @@ class MLFlowLogger(_MLFlowLogger):
     @property
     def tmp_dir(self) -> Path:
         if not hasattr(self, "_tmp_dir"):
-            self._tmp_dir_ob = tempfile.TemporaryDirectory()
-            self._tmp_dir = Path(self._tmp_dir_ob.name).resolve()
+            self._tmp_dir_obj = tempfile.TemporaryDirectory()
+            self._tmp_dir = Path(self._tmp_dir_obj.name).resolve()
             assert self._tmp_dir.is_dir()
         return self._tmp_dir
 
@@ -42,5 +42,5 @@ class MLFlowLogger(_MLFlowLogger):
         self.log_object(image, image_name, dump_func, artifact_path)
 
     def __del__(self):
-        self._tmp_dir_ob.cleanup()
+        self._tmp_dir_obj.cleanup()
         print("cleanup logger temporary directory")

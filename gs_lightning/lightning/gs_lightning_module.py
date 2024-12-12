@@ -1,6 +1,6 @@
 from dataclasses import asdict
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List
 
 import mlconfig
 import numpy as np
@@ -11,6 +11,7 @@ from fused_ssim import fused_ssim
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule
 from torch import nn
+import torch.utils
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler
@@ -26,12 +27,16 @@ class CFGTrainer:
     valid_interval: int = 1000
     # gs parameters
     w_ssim: float = 0.2
-    percent_dense: float = 0.01     # TODO: what is this?
+    percent_dense: float = 0.01
     opacity_reset_interval: int = 3000
     densify_interval: int = 100
     densify_since: int = 500
     densify_util: int = 15_000
-    densify_grad_threshold: int = 0.0002
+    densify_grad_threshold: float = 0.0002
+    clone_size_threshold: float = 0.01          # =percent_dense. threshold between clone or split a gaussian
+    prune_opacity_threshold: float = 0.005
+    prune_size_threshold: float = 0.1
+    prune_screensize_threshold: float = 20.0    # FIXME: This value takes no effects. please refer to its usage in GaussianModel
     sh_degree_step_interval: int = 1000
     # TODO: add depth regularization
     # rendering options
@@ -78,6 +83,8 @@ class GSLightningModule(LightningModule):
     ):
         super().__init__()
 
+        self.automatic_optimization = False
+
         self.cfg_trainer: CFGTrainer = CFGTrainer(**cfg_trainer)
         self.cfg_model: CFGModel = CFGModel(**cfg_model)
         self.cfg_optimizer: CFGOptimizer = CFGOptimizer(**cfg_optimizer)
@@ -112,9 +119,9 @@ class GSLightningModule(LightningModule):
             {"params": [self.gaussians._xyz], "lr": self.cfg_optimizer.xyz_lr_init, "name": "xyz"},
             {"params": [self.gaussians._features_dc], "lr": self.cfg_optimizer.feature_lr, "name": "features_dc"},
             {"params": [self.gaussians._features_rest], "lr": lr_features_rest, "name": "features_rest"},
-            {"params": [self.gaussians._opacity], "lr": self.cfg_optimizer.opacity_lr, "name": "opacity_dc"},
-            {"params": [self.gaussians._scaling], "lr": self.cfg_optimizer.scaling_lr, "name": "scaling_dc"},
-            {"params": [self.gaussians._rotation], "lr": self.cfg_optimizer.rotation_lr, "name": "rotation_dc"},
+            {"params": [self.gaussians._opacity], "lr": self.cfg_optimizer.opacity_lr, "name": "opacity"},
+            {"params": [self.gaussians._scaling], "lr": self.cfg_optimizer.scaling_lr, "name": "scaling"},
+            {"params": [self.gaussians._rotation], "lr": self.cfg_optimizer.rotation_lr, "name": "rotation"},
         ]
         optimizer = mlconfig.instantiate(self.cfg_optimizer.optimizer, parameters)
 
@@ -136,7 +143,19 @@ class GSLightningModule(LightningModule):
         data_dict = self.process_data(batch)
         loss, loss_log, results = self.calculate_loss(data_dict)
 
-        # TODO: Densification
+        self.manual_backward(loss)
+        optimizer: torch.optim.Optimizer = self.optimizers()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        scheduler: torch.optim.lr_scheduler.LRScheduler = self.lr_schedulers()
+        scheduler.step()
+
+        if self.global_step < self.cfg_trainer.densify_util:
+            self.densify_gaussian(results["radii2D"], results["screenspace_points"])
+
+        if self.global_step != 0 and self.global_step % self.cfg_trainer.opacity_reset_interval == 0:
+            self.gaussians.reset_opacity()
 
         # increate sh_degree
         if self.global_step != 0 and self.global_step % self.cfg_trainer.sh_degree_step_interval == 0:
@@ -144,6 +163,7 @@ class GSLightningModule(LightningModule):
 
         self.log_dict(loss_log, prog_bar=True, logger=False, on_step=True)
         self.log_dict({f"train_{k}": v for k, v in loss_log.items()}, prog_bar=False, logger=True, on_step=True, on_epoch=False)
+        self.log("n_gaussians", len(self.gaussians.get_xyz()), prog_bar=False, logger=True, on_step=True, on_epoch=False)
 
         if self.global_step % self.cfg_trainer.display_interval == 0:
             mlflow_logger: MLFlowLogger = self.logger
@@ -152,6 +172,51 @@ class GSLightningModule(LightningModule):
             mlflow_logger.log_image(image, "train_image-latest.jpg")
 
         return loss
+
+    def densify_gaussian(self, radii2D: torch.Tensor, screespace_points: torch.Tensor) -> None:
+        visible_mask = (radii2D > 0)
+        self.gaussians.update_max_radii2D(radii2D, visible_mask)
+        self.gaussians.update_xyz_gradient(screespace_points, visible_mask)
+
+        cfg = self.cfg_trainer
+        if self.global_step > cfg.densify_since and self.global_step % cfg.densify_interval == 0:
+            # add or remove gaussian according to the threshold
+            preserve_idx = self.gaussians.densify_and_prune(
+                densify_grad_threshold=cfg.densify_grad_threshold,
+                clone_size_threshold=cfg.clone_size_threshold,
+                prune_opacity_threshold=cfg.prune_opacity_threshold,
+                prune_size_threshold=cfg.prune_size_threshold,
+                prune_screensize_threshold=cfg.prune_screensize_threshold if self.global_step > cfg.opacity_reset_interval else None,
+            )
+            self.gaussians.reset_max_radii2D()
+            self.gaussians.reset_xyz_gradient()
+
+            # update the optimizer parameters
+            self.update_optimizer_parameters(preserve_idx=preserve_idx)
+
+    def update_optimizer_parameters(self, preserve_idx: List[int]):
+        optimizer: torch.optim.Optimizer = self.optimizers()
+        for group in optimizer.param_groups:
+            name = group.get("name", None)
+            if name is None or name not in self.gaussians.PARAMETER_NAMES:
+                continue
+
+            assert len(group["params"]) == 1
+
+            new_params = getattr(self.gaussians, f"_{name}")
+            stored_state = optimizer.state.get(group["params"][0], None)
+            if stored_state is None:
+                group["params"][0] = new_params
+            else:
+                diff_N = len(new_params) - len(preserve_idx)
+                new_exp_avg = torch.zeros(diff_N, *stored_state["exp_avg"].shape[1:]).to(stored_state["exp_avg"])
+                stored_state["exp_avg"] = torch.cat([stored_state["exp_avg"][preserve_idx], new_exp_avg], dim=0)
+                new_exp_avg_sq = torch.zeros(diff_N, *stored_state["exp_avg_sq"].shape[1:]).to(stored_state["exp_avg_sq"])
+                stored_state["exp_avg_sq"] = torch.cat([stored_state["exp_avg_sq"][preserve_idx], new_exp_avg_sq], dim=0)
+
+                del optimizer.state[group["params"][0]]
+                group["params"][0] = new_params
+                optimizer.state[group["params"][0]] = stored_state
 
     def on_validation_epoch_start(self):
         if isinstance(self.trainer.val_dataloaders, list):
@@ -186,7 +251,7 @@ class GSLightningModule(LightningModule):
         return super().on_validation_end()
 
     def calculate_loss(self, data_dict: dict, calculate_screenspace_points: bool = True) -> Tuple[torch.Tensor, dict, dict]:
-        rendered_image, radii, depth_image, screenspace_points = self.render(
+        rendered_image, radii2D, depth_image, screenspace_points = self.render(
             data_dict,
             self.cfg_trainer.compute_cov3D_python,
             self.cfg_trainer.convert_SHs_python,
@@ -210,7 +275,7 @@ class GSLightningModule(LightningModule):
 
         results = dict(
             rendered=rendered_image,
-            radii=radii,
+            radii2D=radii2D,
             depth_image=depth_image,
             screenspace_points=screenspace_points,
         )
@@ -255,7 +320,7 @@ class GSLightningModule(LightningModule):
         )
         rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-        rendered_image, radii, depth_image = rasterizer(
+        rendered_image, radii2D, depth_image = rasterizer(
             means3D=self.gaussians.get_xyz(),
             means2D=screenspace_points,
             shs=self.gaussians.get_features(),
@@ -266,11 +331,11 @@ class GSLightningModule(LightningModule):
             cov3D_precomp=None,
         )
 
-        return rendered_image, radii, depth_image, screenspace_points
+        return rendered_image, radii2D, depth_image, screenspace_points
 
     @torch.no_grad()
     def get_visuals(self, data_dict) -> torch.Tensor:
-        rendered_image, radii, depth_image, screenspace_points = self.render(
+        rendered_image, radii2D, depth_image, screenspace_points = self.render(
             data_dict,
             self.cfg_trainer.compute_cov3D_python,
             self.cfg_trainer.convert_SHs_python,

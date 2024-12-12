@@ -15,6 +15,15 @@ from gs_lightning.utils.sh import rgb2sh0
 
 
 class GaussianModel(nn.Module):
+    PARAMETER_NAMES = [
+        "xyz",
+        "features_dc",
+        "features_rest",
+        "opacity",
+        "scaling",
+        "rotation",
+    ]
+
     def __init__(
         self,
         sh_degree: int = 3,
@@ -82,8 +91,13 @@ class GaussianModel(nn.Module):
         self._rotation = nn.Parameter(rotation)
         self._opacity = nn.Parameter(opacity)
 
+        self.register_buffer("xyz_grad_accum", torch.zeros(N))
+        self.register_buffer("xyz_grad_count", torch.zeros(N))
+        self.register_buffer("max_radii2D", torch.zeros(N))
+
         # TODO: add self._exposure
 
+    # Load & Dump training results
     def load_model_ply(self, ply_path: str) -> None:
         plyData = PlyData.read(ply_path)
         vertices: PlyElement = plyData["vertex"]
@@ -105,9 +119,6 @@ class GaussianModel(nn.Module):
         self._opacity = nn.Parameter(opacity)
 
         self.active_sh_degree = int(np.sqrt(features_rest.shape[-1] + 1))
-
-    def step_sh_degree(self):
-        self.active_sh_degree = min(self.active_sh_degree + 1, self.max_sh_degree)
 
     @classmethod
     def load_vertices_properties(cls, vertices: PlyElement, name: str) -> torch.Tensor:
@@ -147,6 +158,144 @@ class GaussianModel(nn.Module):
         attributes = np.array([tuple(attr) for attr in attributes], dtype=structure_dtype)
         element = PlyElement.describe(attributes, "vertex")
         PlyData([element]).write(ply_path)
+
+    # For Densification
+    @torch.no_grad()
+    def update_max_radii2D(self, radii: torch.Tensor, visible_mask: torch.Tensor) -> None:
+        self.max_radii2D[visible_mask] = torch.max(self.max_radii2D[visible_mask], radii[visible_mask])
+
+    @torch.no_grad()
+    def update_xyz_gradient(self, screenspace_points: torch.Tensor, visible_mask: torch.Tensor) -> None:
+        screenspace_gradient = screenspace_points.grad
+        self.xyz_grad_accum[visible_mask] += torch.norm(screenspace_gradient[visible_mask, :2], dim=1)
+        self.xyz_grad_count[visible_mask] += 1
+
+    @torch.no_grad()
+    def densify_and_prune(
+        self,
+        densify_grad_threshold: float,
+        clone_size_threshold: float,
+        prune_opacity_threshold: float,
+        prune_size_threshold: float,
+        prune_screensize_threshold: float = None,
+    ) -> List[int]:
+        preserve_idx = self._prune_gaussian(
+            prune_opacity_threshold,
+            prune_size_threshold,
+            prune_screensize_threshold,
+        )
+
+        xyz_grad = self.xyz_grad_accum / self.xyz_grad_count
+        xyz_grad[xyz_grad.isnan()] = 0.0
+
+        bad_mask = (xyz_grad >= densify_grad_threshold)
+        gaussian_size = torch.max(self.get_scaling(), dim=1)[0]
+        clone_size_threshold = clone_size_threshold * self.spatial_scale
+        bad_small_idx = torch.logical_and(bad_mask, gaussian_size < clone_size_threshold).nonzero().squeeze(-1)
+        bad_large_idx = torch.logical_and(bad_mask, gaussian_size >= clone_size_threshold).nonzero().squeeze(-1)
+
+        self._clone_gaussian(bad_small_idx)
+        self._split_gaussian(bad_large_idx)
+
+        return preserve_idx
+
+    @torch.no_grad()
+    def _prune_gaussian(
+        self,
+        opacity_threshold: float,
+        prune_size_threshold: float,
+        prune_screensize_threshold: float = None
+    ) -> List[int]:
+        preserve_mask = (self.get_opacity() > opacity_threshold).squeeze(-1)
+        if prune_screensize_threshold is not None:
+            # FIXME: in the official code, this criterion doesn't work since self.max_radii2D has been set to 0
+            # in the previous function(densification_postfix in both densify_and_clone and densify_and_split).
+            # https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L462
+            # https://github.com/graphdeco-inria/gaussian-splatting/issues/820
+            # I tried fixing this issue, but the criterion ended up removing too many gaussians and worsening the results
+            #
+            # preserve_mask = torch.logical_and(preserve_mask, self.max_radii2D < prune_screensize_threshold)
+            gaussian_size = torch.max(self.get_scaling(), dim=1)[0]
+            preserve_mask = torch.logical_and(preserve_mask, gaussian_size < prune_size_threshold * self.spatial_scale)
+
+        self._xyz = nn.Parameter(self._xyz[preserve_mask])
+        self._features_dc = nn.Parameter(self._features_dc[preserve_mask])
+        self._features_rest = nn.Parameter(self._features_rest[preserve_mask])
+        self._opacity = nn.Parameter(self._opacity[preserve_mask])
+        self._scaling = nn.Parameter(self._scaling[preserve_mask])
+        self._rotation = nn.Parameter(self._rotation[preserve_mask])
+
+        self.max_radii2D = self.max_radii2D[preserve_mask]
+        self.xyz_grad_accum = self.xyz_grad_accum[preserve_mask]
+        self.xyz_grad_count = self.xyz_grad_count[preserve_mask]
+
+        return preserve_mask.nonzero().squeeze(-1)
+
+    @torch.no_grad()
+    def _clone_gaussian(self, selection_idx: torch.Tensor):
+        # clone a small gaussian to better cover the under-reconstructed region
+        self._add_gaussian(
+            xyz=self._xyz[selection_idx].clone(),
+            features_dc=self._features_dc[selection_idx].clone(),
+            features_rest=self._features_rest[selection_idx].clone(),
+            opacity=self._opacity[selection_idx].clone(),
+            scaling=self._scaling[selection_idx].clone(),
+            rotation=self._rotation[selection_idx].clone(),
+        )
+
+    @torch.no_grad()
+    def _split_gaussian(self, selection_idx: torch.Tensor):
+        # split a large gaussian to better fit the under-reconstructed region
+        displace_std = self.get_scaling()[selection_idx]
+        displace_mean = torch.zeros_like(self.get_xyz()[selection_idx])
+        displace = torch.normal(mean=displace_mean, std=displace_std)
+        R = K.geometry.Quaternion(self.get_rotation()[selection_idx]).matrix()
+
+        xyz = self.get_xyz()[selection_idx] + torch.bmm(R, displace.unsqueeze(-1)).squeeze(-1)
+        self._xyz[selection_idx] = xyz[:]
+
+        scaling = self.inversed_activation_scaling(self.get_scaling()[selection_idx] / 1.6)
+        self._scaling[selection_idx] = scaling[:]
+
+        self._clone_gaussian(selection_idx)
+
+    @torch.no_grad()
+    def _add_gaussian(
+        self,
+        xyz: torch.Tensor,
+        features_dc: torch.Tensor,
+        features_rest: torch.Tensor,
+        opacity: torch.Tensor,
+        scaling: torch.Tensor,
+        rotation: torch.Tensor,
+    ):
+        N = len(xyz)
+        self._xyz = nn.Parameter(torch.cat([self._xyz, xyz], dim=0))
+        self._features_dc = nn.Parameter(torch.cat([self._features_dc, features_dc], dim=0))
+        self._features_rest = nn.Parameter(torch.cat([self._features_rest, features_rest], dim=0))
+        self._opacity = nn.Parameter(torch.cat([self._opacity, opacity], dim=0))
+        self._scaling = nn.Parameter(torch.cat([self._scaling, scaling], dim=0))
+        self._rotation = nn.Parameter(torch.cat([self._rotation, rotation], dim=0))
+
+        self.max_radii2D = torch.cat([self.max_radii2D, torch.zeros(N).to(self.max_radii2D)])
+        self.xyz_grad_accum = torch.cat([self.xyz_grad_accum, torch.zeros(N).to(self.xyz_grad_accum)])
+        self.xyz_grad_count = torch.cat([self.xyz_grad_count, torch.zeros(N).to(self.xyz_grad_count)])
+
+    @torch.no_grad()
+    def reset_opacity(self):
+        new_opacity = torch.min(self.get_opacity(), torch.ones_like(self._opacity) * 0.01)
+        new_opacity = self.inversed_activation_opacity(new_opacity)
+        self._opacity[:] = new_opacity[:]
+
+    def reset_max_radii2D(self):
+        self.max_radii2D.fill_(0.0)
+
+    def reset_xyz_gradient(self):
+        self.xyz_grad_accum.fill_(0.0)
+        self.xyz_grad_count.fill_(0.0)
+
+    def step_sh_degree(self):
+        self.active_sh_degree = min(self.active_sh_degree + 1, self.max_sh_degree)
 
     def ready_for_training(self) -> bool:
         if not hasattr(self, "_xyz"):
