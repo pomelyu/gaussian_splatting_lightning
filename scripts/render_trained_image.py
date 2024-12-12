@@ -35,6 +35,7 @@ def main():
 
     gaussians = GaussianModel(sh_degree=args.sh_degree)
     gaussians.load_model_ply(args.model)
+    gaussians.ready_for_inference()
     gaussians.to(device)
 
     background = [1,1,1] if args.white_background else [0, 0, 0]

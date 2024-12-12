@@ -148,6 +148,18 @@ class GaussianModel(nn.Module):
         element = PlyElement.describe(attributes, "vertex")
         PlyData([element]).write(ply_path)
 
+    def ready_for_training(self) -> bool:
+        if not hasattr(self, "_xyz"):
+            raise RuntimeError("colmap_ply is required for training")
+        if self.spatial_scale is None:
+            raise RuntimeError("colmap_path is required for training")
+        return True
+
+    def ready_for_inference(self) -> bool:
+        if not hasattr(self, "_xyz"):
+            raise RuntimeError("load_model_ply should be executred before inference")
+        return True
+
     def get_xyz(self) -> torch.Tensor:
         return self._xyz
     

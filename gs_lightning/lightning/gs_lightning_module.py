@@ -48,7 +48,6 @@ class CFGModel:
 @dataclass
 class CFGOptimizer:
     optimizer: DictConfig
-    colmap_path: str
     xyz_lr_init: float = 0.00016
     feature_lr: float = 0.0025
     opacity_lr: float = 0.025
@@ -87,6 +86,7 @@ class GSLightningModule(LightningModule):
         self.cfg_valid_dataloader = cfg_valid_dataloader
 
         self.gaussians = GaussianModel(**asdict(self.cfg_model))
+        self.gaussians.ready_for_training()
 
         self.criterion_recon = nn.L1Loss()
         self.criterion_ssim = lambda x, y: 1 - fused_ssim(x, y)
