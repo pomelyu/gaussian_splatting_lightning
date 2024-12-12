@@ -8,6 +8,7 @@ from plyfile import PlyData
 from plyfile import PlyElement
 from torch import nn
 
+from gs_lightning.utils.colmap import get_nerf_norm
 from gs_lightning.utils.math import distCUDA2
 from gs_lightning.utils.math import inverse_sigmoid
 from gs_lightning.utils.sh import rgb2sh0
@@ -18,6 +19,7 @@ class GaussianModel(nn.Module):
         self,
         sh_degree: int = 3,
         colmap_ply: str = None,
+        colmap_path: str = None,
     ):
         super().__init__()
 
@@ -32,6 +34,13 @@ class GaussianModel(nn.Module):
 
         if colmap_ply is not None:
             self.initialize(colmap_ply)
+
+        # In official code, it's called scene.cameras_extent = getNerfppNorm(cam_info)["radius"]
+        # It's the scale of the scene
+        if colmap_path is not None:
+            self.spatial_scale = get_nerf_norm(colmap_path)["radius"]
+        else:
+            self.spatial_scale = None
 
     def initialize(self, colmap_ply: str) -> None:
         plyData = PlyData.read(colmap_ply)

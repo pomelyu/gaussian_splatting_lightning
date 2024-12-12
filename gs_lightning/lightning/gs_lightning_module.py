@@ -14,7 +14,6 @@ from torch import nn
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler
-from gs_lightning.utils.colmap import get_nerf_norm
 from gs_lightning.utils.lightning import MLFlowLogger
 
 
@@ -44,6 +43,7 @@ class CFGTrainer:
 class CFGModel:
     sh_degree: int = 3
     colmap_ply: str = None
+    colmap_path: str = None
 
 @dataclass
 class CFGOptimizer:
@@ -104,8 +104,7 @@ class GSLightningModule(LightningModule):
 
     def configure_optimizers(self):
         # TODO: enable SpareAdam
-        # getNerfppNorm(cam_info)["radius"]
-        spatial_lr_scale = get_nerf_norm(self.cfg_optimizer.colmap_path)["radius"]
+        spatial_lr_scale = self.gaussians.spatial_scale
         self.cfg_optimizer.xyz_lr_init *= spatial_lr_scale
 
         lr_features_rest = self.cfg_optimizer.feature_lr / self.cfg_optimizer.r_dc2rest
