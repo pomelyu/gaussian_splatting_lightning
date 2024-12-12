@@ -29,8 +29,18 @@ class GaussianModel(nn.Module):
         sh_degree: int = 3,
         colmap_ply: str = None,
         colmap_path: str = None,
+        use_screensize_threshold: bool = True,
     ):
         super().__init__()
+
+        # There is a bug in the official implementation, so this screensize threshold doesn't work
+        # In detail, self.max_radii2D has been set to 0 in the previous function
+        # (i.e. densification_postfix in both densify_and_clone and densify_and_split),
+        # so self.max_radii2D > threshold always return False
+        #
+        # https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L462
+        # https://github.com/graphdeco-inria/gaussian-splatting/issues/820
+        self.use_screensize_threshold = use_screensize_threshold
 
         self.max_sh_degree = sh_degree
         self.active_sh_degree = 0
@@ -207,13 +217,8 @@ class GaussianModel(nn.Module):
     ) -> List[int]:
         preserve_mask = (self.get_opacity() > opacity_threshold).squeeze(-1)
         if prune_screensize_threshold is not None:
-            # FIXME: in the official code, this criterion doesn't work since self.max_radii2D has been set to 0
-            # in the previous function(densification_postfix in both densify_and_clone and densify_and_split).
-            # https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L462
-            # https://github.com/graphdeco-inria/gaussian-splatting/issues/820
-            # I tried fixing this issue, but the criterion ended up removing too many gaussians and worsening the results
-            #
-            # preserve_mask = torch.logical_and(preserve_mask, self.max_radii2D < prune_screensize_threshold)
+            if self.use_screensize_threshold:
+                preserve_mask = torch.logical_and(preserve_mask, self.max_radii2D < prune_screensize_threshold)
             gaussian_size = torch.max(self.get_scaling(), dim=1)[0]
             preserve_mask = torch.logical_and(preserve_mask, gaussian_size < prune_size_threshold * self.spatial_scale)
 

@@ -36,7 +36,7 @@ class CFGTrainer:
     clone_size_threshold: float = 0.01          # =percent_dense. threshold between clone or split a gaussian
     prune_opacity_threshold: float = 0.005
     prune_size_threshold: float = 0.1
-    prune_screensize_threshold: float = 20.0    # FIXME: This value takes no effects. please refer to its usage in GaussianModel
+    prune_screensize_threshold: float = 40.0
     sh_degree_step_interval: int = 1000
     # TODO: add depth regularization
     # rendering options
@@ -49,6 +49,7 @@ class CFGModel:
     sh_degree: int = 3
     colmap_ply: str = None
     colmap_path: str = None
+    use_screensize_threshold: bool = True
 
 @dataclass
 class CFGOptimizer:
