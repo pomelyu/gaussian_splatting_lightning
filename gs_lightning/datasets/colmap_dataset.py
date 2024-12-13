@@ -33,9 +33,9 @@ class ColmapDataset(Dataset):
         resize_to: Optional[int] = None,
         downscale: Optional[float] = None,
         white_background: bool = False,
-        preload_data: bool = True,
         z_near: float = 0.01,
-        z_far: float = 100.0, 
+        z_far: float = 100.0,
+        preload_data: bool = True,
     ):
         super().__init__()
 
@@ -99,6 +99,11 @@ class ColmapDataset(Dataset):
         projection_matrix = torch.Tensor(projection_matrix)
         full_proj_transform = world_view_transform @ projection_matrix
 
+        _, H, W = image.shape
+        camera_intrinsic = torch.eye(3)
+        camera_intrinsic[0, 0] = camera_info.focal_length_x * (W /camera_info.width)
+        camera_intrinsic[1, 1] = camera_info.focal_length_y * (H /camera_info.height)
+
         data = dict(
             image=image,
             tanfovx=(camera_info.width * 0.5) / camera_info.focal_length_x,
@@ -107,6 +112,7 @@ class ColmapDataset(Dataset):
             viewmatrix=world_view_transform,
             projmatrix=full_proj_transform,
             campos=camera_center,
+            camera_intrinsic=camera_intrinsic,
         )
         return data
 
@@ -162,6 +168,7 @@ class ColmapDataModule(LightningDataModule):
         white_background: bool = False,
         z_near: float = 0.01,
         z_far: float = 100.0,
+        preload_data: bool = True,
     ): 
         super().__init__()
 
@@ -176,6 +183,7 @@ class ColmapDataModule(LightningDataModule):
                 white_background=white_background,
                 z_near=z_near,
                 z_far=z_far,
+                preload_data=preload_data,
             )
 
         self.train_dataset = create_dataset(train_idx_file)
