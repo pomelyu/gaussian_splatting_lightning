@@ -33,9 +33,9 @@ class ColmapDataset(Dataset):
         resize_to: Optional[int] = None,
         downscale: Optional[float] = None,
         white_background: bool = False,
-        preload_data: bool = True,
         z_near: float = 0.01,
-        z_far: float = 100.0, 
+        z_far: float = 100.0,
+        preload_data: bool = True,
     ):
         super().__init__()
 
@@ -162,6 +162,7 @@ class ColmapDataModule(LightningDataModule):
         white_background: bool = False,
         z_near: float = 0.01,
         z_far: float = 100.0,
+        preload_data: bool = True,
     ): 
         super().__init__()
 
@@ -176,6 +177,7 @@ class ColmapDataModule(LightningDataModule):
                 white_background=white_background,
                 z_near=z_near,
                 z_far=z_far,
+                preload_data=preload_data,
             )
 
         self.train_dataset = create_dataset(train_idx_file)
