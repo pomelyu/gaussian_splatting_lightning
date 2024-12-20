@@ -26,9 +26,17 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 ```
 
 ## TODO(sorted by priority)
-- [ ] support SpareAdam
+- [x] use pycolmap to load the COLMAP data
+- [x] break down official inference code(remove scene)
+- [x] replace official GaussianModel for inference
+- [x] setup `environment.yml` for pytorch2.0.1 and cuda11.8 
+- [x] implement basic training without densification by `pytorch_lightning`, `mlflow` and `mlconfig`(`omegaconfig`)
+- [x] add densification
+- [x] support `GSWarmUpExponentialDecayScheduler`
+- [x] try [gsplat](https://github.com/nerfstudio-project/gsplat) in `dev-gsplat` [branch](https://github.com/pomelyu/gaussian_splatting_lightning/tree/dev-gsplat)
 - [ ] look into cuda code
 - [ ] figure out the usage of exposure
+- [ ] support SpareAdam
 - [ ] enable full controls of lightning CLI
 - [ ] connect to official GUI
 - [ ] add depth regularization
