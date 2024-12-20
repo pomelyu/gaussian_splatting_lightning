@@ -99,6 +99,13 @@ class ColmapDataset(Dataset):
         projection_matrix = torch.Tensor(projection_matrix)
         full_proj_transform = world_view_transform @ projection_matrix
 
+        _, H, W = image.shape
+        camera_intrinsic = torch.eye(3)
+        camera_intrinsic[0, 0] = camera_info.focal_length_x * (W /camera_info.width)
+        camera_intrinsic[1, 1] = camera_info.focal_length_y * (H /camera_info.height)
+        camera_intrinsic[0, 2] = W * 0.5
+        camera_intrinsic[1, 2] = H * 0.5
+
         data = dict(
             image=image,
             tanfovx=(camera_info.width * 0.5) / camera_info.focal_length_x,
@@ -107,6 +114,7 @@ class ColmapDataset(Dataset):
             viewmatrix=world_view_transform,
             projmatrix=full_proj_transform,
             campos=camera_center,
+            camera_intrinsic=camera_intrinsic,
         )
         return data
 

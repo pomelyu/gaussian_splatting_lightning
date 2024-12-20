@@ -1,4 +1,4 @@
-exp_name: GaussianSplatting
+exp_name: debug
 run_name: colmap_kanade_360
 mlflow_folder: ./mlruns
 

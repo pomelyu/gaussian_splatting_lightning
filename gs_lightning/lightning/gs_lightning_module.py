@@ -1,17 +1,17 @@
 from dataclasses import asdict
 from dataclasses import dataclass
-from typing import Tuple, List
+from typing import List
+from typing import Tuple
 
 import mlconfig
 import numpy as np
 import torch
-from diff_gaussian_rasterization import GaussianRasterizationSettings
-from diff_gaussian_rasterization import GaussianRasterizer
+import torch.utils
 from fused_ssim import fused_ssim
+from gsplat import rasterization
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule
 from torch import nn
-import torch.utils
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler
@@ -149,7 +149,7 @@ class GSLightningModule(LightningModule):
             return super().on_train_batch_start(batch, batch_idx)
  
         if self.global_step < self.cfg_trainer.densify_util:
-            self.densify_gaussian(self.cached_results["radii2D"], self.cached_results["screenspace_gradient"])
+            self.densify_gaussian(self.cached_results["visibile_mask"], self.cached_results["radii2D"], self.cached_results["screenspace_gradient"])
 
         if self.global_step % self.cfg_trainer.opacity_reset_interval == 0:
             self.gaussians.reset_opacity()
@@ -172,9 +172,14 @@ class GSLightningModule(LightningModule):
         scheduler: torch.optim.lr_scheduler.LRScheduler = self.lr_schedulers()
         scheduler.step()
 
+        _, H, W = results["rendered"].shape
+        screenspace_gradient = results["screenspace_points"].grad.detach()
+        screenspace_gradient[:, 0] *= (W*0.5)
+        screenspace_gradient[:, 1] *= (H*0.5)
         self.cached_results = {
+            "visibile_mask": results["visibile_mask"].detach(),
             "radii2D": results["radii2D"].detach(),
-            "screenspace_gradient": results["screenspace_points"].grad.detach(),
+            "screenspace_gradient": screenspace_gradient,
         }
 
         self.log_dict(loss_log, prog_bar=True, logger=False, on_step=True)
@@ -189,8 +194,8 @@ class GSLightningModule(LightningModule):
 
         return loss
 
-    def densify_gaussian(self, radii2D: torch.Tensor, screenspace_gradient: torch.Tensor) -> None:
-        visible_mask = (radii2D > 0)
+    def densify_gaussian(self, visible_mask, radii2D: torch.Tensor, screenspace_gradient: torch.Tensor) -> None:
+        # visible_mask = (radii2D > 0)
         self.gaussians.update_max_radii2D(radii2D, visible_mask)
         self.gaussians.update_xyz_gradient(screenspace_gradient, visible_mask)
 
@@ -267,7 +272,7 @@ class GSLightningModule(LightningModule):
         return super().on_validation_end()
 
     def calculate_loss(self, data_dict: dict, calculate_screenspace_points: bool = True) -> Tuple[torch.Tensor, dict, dict]:
-        rendered_image, radii2D, depth_image, screenspace_points = self.render(
+        rendered_image, radii2D, depth_image, screenspace_points, visibile_mask = self.render(
             data_dict,
             self.cfg_trainer.compute_cov3D_python,
             self.cfg_trainer.convert_SHs_python,
@@ -292,7 +297,7 @@ class GSLightningModule(LightningModule):
         results = dict(
             rendered=rendered_image,
             radii2D=radii2D,
-            depth_image=depth_image,
+            visibile_mask=visibile_mask,
             screenspace_points=screenspace_points,
         )
 
@@ -306,58 +311,58 @@ class GSLightningModule(LightningModule):
         seperate_SHs: bool = False,
         calculate_screenspace_points: bool = True,  # record gradients of the 2D(screen-space) means
     ):
-        if compute_cov3D_python:
-            raise NotImplementedError()
-        if convert_SHs_python:
-            raise NotImplementedError()
-        if seperate_SHs:
-            raise NotImplementedError()
+        H, W = data_dict["image"].shape[-2:]
+        images, alphas, meta = rasterization(
+            means=self.gaussians.get_xyz(),
+            quats=self.gaussians.get_rotation(),
+            scales=self.gaussians.get_scaling(),
+            opacities=self.gaussians.get_opacity().squeeze(-1),
+            colors=self.gaussians.get_features(),
+            viewmats=data_dict["viewmatrix"][None, :, :].transpose(1, 2),
+            Ks=data_dict["camera_intrinsic"][None, :, :],
+            width=W,
+            height=H,
+            near_plane=0.01,
+            far_plane=100.0,
+            sh_degree=self.gaussians.active_sh_degree,
+            backgrounds=data_dict["background"][None, :],
+            absgrad=calculate_screenspace_points,
+            render_mode="RGB+D",
+        )
 
-        if calculate_screenspace_points:
-            screenspace_points = torch.zeros_like(self.gaussians.get_xyz(), requires_grad=True)
+        rendered_image, depth_image = images[0, :, :, :3], images[0, :, :, 3:]
+        rendered_image = torch.moveaxis(rendered_image, -1, 0)
+        depth_image = torch.moveaxis(depth_image, -1, 0)
+
+        alphas = torch.moveaxis(alphas[0], -1, 0)
+        background_depth = depth_image.max() + (depth_image.max() - depth_image.min()) * 0.5
+        depth_image = depth_image * alphas + background_depth * (1 - alphas)
+
+        visibile_mask = meta["gaussian_ids"]
+        radii2D = meta["radii"]
+
+        if "means2d" in meta:
+            screenspace_points = meta["means2d"]
+            screenspace_points.requires_grad_(True)
+            screenspace_points.retain_grad()
         else:
             screenspace_points = None
 
-        H, W = data_dict["image"].shape[-2:]
-        raster_settings = GaussianRasterizationSettings(
-            image_height=H,
-            image_width=W,
-            tanfovx=data_dict["tanfovx"],
-            tanfovy=data_dict["tanfovy"],
-            bg=data_dict["background"],
-            scale_modifier=1.0,
-            viewmatrix=data_dict["viewmatrix"],
-            projmatrix=data_dict["projmatrix"],
-            sh_degree=self.gaussians.active_sh_degree,
-            campos=data_dict["campos"],
-            prefiltered=False,
-            debug=False,
-            antialiasing=False
-        )
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
-
-        rendered_image, radii2D, depth_image = rasterizer(
-            means3D=self.gaussians.get_xyz(),
-            means2D=screenspace_points,
-            shs=self.gaussians.get_features(),
-            colors_precomp=None,
-            opacities=self.gaussians.get_opacity(),
-            scales=self.gaussians.get_scaling(),
-            rotations=self.gaussians.get_rotation(),
-            cov3D_precomp=None,
-        )
-
-        return rendered_image, radii2D, depth_image, screenspace_points
+        return rendered_image, radii2D, depth_image, screenspace_points, visibile_mask
 
     @torch.no_grad()
     def get_visuals(self, data_dict) -> torch.Tensor:
-        rendered_image, radii2D, depth_image, screenspace_points = self.render(
+        rendered_image, radii2D, depth_image, screenspace_points, visibile_mask = self.render(
             data_dict,
             self.cfg_trainer.compute_cov3D_python,
             self.cfg_trainer.convert_SHs_python,
             self.cfg_trainer.seperate_SHs,
             calculate_screenspace_points=False,
         )
+
+        depth_image = (depth_image - depth_image.min()) / (depth_image.max() - depth_image.min())
+        depth_image = 1 - depth_image
+
         image = data_dict["image"]
         vis = torch.cat([image, rendered_image, depth_image.expand_as(image)], -1)
         return vis

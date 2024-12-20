@@ -172,11 +172,11 @@ class GaussianModel(nn.Module):
     # For Densification
     @torch.no_grad()
     def update_max_radii2D(self, radii: torch.Tensor, visible_mask: torch.Tensor) -> None:
-        self.max_radii2D[visible_mask] = torch.max(self.max_radii2D[visible_mask], radii[visible_mask])
+        self.max_radii2D[visible_mask] = torch.max(self.max_radii2D[visible_mask], radii)
 
     @torch.no_grad()
     def update_xyz_gradient(self, screenspace_gradient: torch.Tensor, visible_mask: torch.Tensor) -> None:
-        self.xyz_grad_accum[visible_mask] += torch.norm(screenspace_gradient[visible_mask, :2], dim=1)
+        self.xyz_grad_accum[visible_mask] += torch.norm(screenspace_gradient[:, :2], dim=1)
         self.xyz_grad_count[visible_mask] += 1
 
     @torch.no_grad()

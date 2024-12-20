@@ -26,3 +26,6 @@ dependencies:
     - pytorch-lightning
     - torchaudio==2.0.2
     - torchvision==0.15.2
+    - jaxtyping
+    - gsplat==1.4.0+pt20cu118
+    - rich
