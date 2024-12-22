@@ -41,14 +41,6 @@ def main():
     background = [1,1,1] if args.white_background else [0, 0, 0]
     background = torch.Tensor(background).to(device)
 
-    # pipeline_params = Namespace(
-    #     convert_SHs_python=False,     # TODO: meaning?
-    #     compute_cov3D_python=False,   # TODO: meaning?
-    #     debug=False,
-    #     antialiasing=False,
-    # )
-    # rendering = render(camera, gaussians, pipeline_params, background, use_trained_exp=False, separate_sh=False)["render"]
-
     reconstruction = pycolmap.Reconstruction(args.colmap)
     # {1: Camera(camera_id=1, model=PINHOLE, width=5068, height=3326, params=[4219.170711, 4205.602294, 2534.000000, 1663.000000] (fx, fy, cx, cy))}
     cameras: MapCameraIdToCamera = reconstruction.cameras
