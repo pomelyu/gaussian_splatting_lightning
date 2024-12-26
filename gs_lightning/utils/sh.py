@@ -42,16 +42,16 @@ def apply_sh(sh_params: torch.Tensor, directions: torch.Tensor, sh_degree: int) 
     N = len(sh_params)
     assert 0 <= sh_degree <= 4
     assert directions.shape == (N, 3)
-    x, y, z = directions[..., 0], directions[..., 1], directions[..., 2]
 
     result = C0 * sh_params[..., 0]
     if sh_degree < 1:
         return result
 
+    x, y, z = directions[..., 0], directions[..., 1], directions[..., 2]
     result += (
-        C1[0] * sh_params[..., 1] +
-        C1[1] * sh_params[..., 2] +
-        C1[2] * sh_params[..., 3]
+        C1[0] * y * sh_params[..., 1] +
+        C1[1] * z * sh_params[..., 2] +
+        C1[2] * x * sh_params[..., 3]
     )
 
     if sh_degree < 2:

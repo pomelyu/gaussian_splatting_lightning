@@ -34,7 +34,10 @@ python -m scripts.render_trained_image CHECKPOINT_PLY --colmap COLMAP_DIR/sparse
 - [x] add densification
 - [x] support `GSWarmUpExponentialDecayScheduler`
 - [x] try [gsplat](https://github.com/nerfstudio-project/gsplat) in `dev-gsplat` [branch](https://github.com/pomelyu/gaussian_splatting_lightning/tree/dev-gsplat)
-- [ ] look into cuda code
+- [x] look into forward cuda code
+- [ ] implement runnable python rasterization function
+- [ ] implement runnable cuda rasterization function
+- [ ] look into backward cuda code
 - [ ] figure out the usage of exposure
 - [ ] support SpareAdam
 - [ ] enable full controls of lightning CLI

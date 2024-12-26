@@ -8,6 +8,7 @@ from plyfile import PlyData
 from plyfile import PlyElement
 from torch import nn
 
+from gs_lightning.rasterizer_python.forward import computeConv3D
 from gs_lightning.utils.colmap import get_nerf_norm
 from gs_lightning.utils.math import distCUDA2
 from gs_lightning.utils.math import inverse_sigmoid
@@ -328,16 +329,5 @@ class GaussianModel(nn.Module):
     def get_rotation(self) -> torch.Tensor:
         return torch.nn.functional.normalize(self._rotation)
 
-    # def get_covariance(self, scaling_modifier: float = 1) -> torch.Tensor:
-    #     # calculate covariance matrix from scaling and rotation
-    #     # eq6. Covariance = R @ S @ S^T @ R^T
-    #     R = K.geometry.Quaternion(self.get_rotation()).matrix()      # (N, 3, 3)
-    #     S = torch.diag_embed(self.get_scaling() * scaling_modifier)  # (N, 3, 3)
-    #     L = R @ S
-    #     covar = L @ L.transpose(1, 2)                           # (N, 3, 3)
-    #     # use the low diagnoal elements to make sure the matrix is symmetric
-    #     out = torch.stack([
-    #         covar[:, 0, 0], covar[:, 0, 1], covar[:, 0, 2],
-    #         covar[:, 1, 1], covar[:, 1, 2], covar[:, 2, 2],
-    #     ], -1)
-    #     return out
+    def get_covariance(self, scaling_modifier: float = 1) -> torch.Tensor:
+        return computeConv3D(self.get_scaling(), scaling_modifier, self.get_rotation())
