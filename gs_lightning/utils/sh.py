@@ -43,15 +43,15 @@ def apply_sh(sh_params: torch.Tensor, directions: torch.Tensor, sh_degree: int) 
     assert 0 <= sh_degree <= 4
     assert directions.shape == (N, 3)
 
-    result = C0 * sh_params[..., 0]
+    result = C0 * sh_params[:, 0]
     if sh_degree < 1:
         return result
 
-    x, y, z = directions[..., 0], directions[..., 1], directions[..., 2]
+    x, y, z = directions[:, 0:1], directions[:, 1:2], directions[:, 2:3]
     result += (
-        C1[0] * y * sh_params[..., 1] +
-        C1[1] * z * sh_params[..., 2] +
-        C1[2] * x * sh_params[..., 3]
+        C1[0] * y * sh_params[:, 1] +
+        C1[1] * z * sh_params[:, 2] +
+        C1[2] * x * sh_params[:, 3]
     )
 
     if sh_degree < 2:
@@ -60,39 +60,39 @@ def apply_sh(sh_params: torch.Tensor, directions: torch.Tensor, sh_degree: int) 
     xx, yy, zz = x * x, y * y, z * z
     xy, yz, zx = x * y, y * z, z * x
     result += (
-        C2[0] * xy * sh_params[..., 4] +
-        C2[1] * yz * sh_params[..., 5] +
-        C2[2] * (2.0 * zz - xx - yy) * sh_params[..., 6] +
-        C2[3] * zx * sh_params[..., 7] +
-        C2[4] * (xx - yy) * sh_params[..., 8]
+        C2[0] * xy * sh_params[:, 4] +
+        C2[1] * yz * sh_params[:, 5] +
+        C2[2] * (2.0 * zz - xx - yy) * sh_params[:, 6] +
+        C2[3] * zx * sh_params[:, 7] +
+        C2[4] * (xx - yy) * sh_params[:, 8]
     )
 
     if sh_degree < 3:
         return result
 
     result += (
-        C3[0] * y * (3 * xx - yy) * sh_params[..., 9] +
-        C3[1] * xy * z * sh_params[..., 10] +
-        C3[2] * y * (4 * zz - xx - yy)* sh_params[..., 11] +
-        C3[3] * z * (2 * zz - 3 * xx - 3 * yy) * sh_params[..., 12] +
-        C3[4] * x * (4 * zz - xx - yy) * sh_params[..., 13] +
-        C3[5] * z * (xx - yy) * sh_params[..., 14] +
-        C3[6] * x * (xx - 3 * yy) * sh_params[..., 15]
+        C3[0] * y * (3 * xx - yy) * sh_params[:, 9] +
+        C3[1] * xy * z * sh_params[:, 10] +
+        C3[2] * y * (4 * zz - xx - yy)* sh_params[:, 11] +
+        C3[3] * z * (2 * zz - 3 * xx - 3 * yy) * sh_params[:, 12] +
+        C3[4] * x * (4 * zz - xx - yy) * sh_params[:, 13] +
+        C3[5] * z * (xx - yy) * sh_params[:, 14] +
+        C3[6] * x * (xx - 3 * yy) * sh_params[:, 15]
     )
 
     if sh_degree < 3:
         return result
     
     result += (
-        C4[0] * xy * (xx - yy) * sh_params[..., 16] +
-        C4[1] * yz * (3 * xx - yy) * sh_params[..., 17] +
-        C4[2] * xy * (7 * zz - 1) * sh_params[..., 18] +
-        C4[3] * yz * (7 * zz - 3) * sh_params[..., 19] +
-        C4[4] * (zz * (35 * zz - 30) + 3) * sh_params[..., 20] +
-        C4[5] * zx * (7 * zz - 3) * sh_params[..., 21] +
-        C4[6] * (xx - yy) * (7 * zz - 1) * sh_params[..., 22] +
-        C4[7] * zx * (xx - 3 * yy) * sh_params[..., 23] +
-        C4[8] * (xx * (xx - 3 * yy) - yy * (3 * xx - yy)) * sh_params[..., 24]
+        C4[0] * xy * (xx - yy) * sh_params[:, 16] +
+        C4[1] * yz * (3 * xx - yy) * sh_params[:, 17] +
+        C4[2] * xy * (7 * zz - 1) * sh_params[:, 18] +
+        C4[3] * yz * (7 * zz - 3) * sh_params[:, 19] +
+        C4[4] * (zz * (35 * zz - 30) + 3) * sh_params[:, 20] +
+        C4[5] * zx * (7 * zz - 3) * sh_params[:, 21] +
+        C4[6] * (xx - yy) * (7 * zz - 1) * sh_params[:, 22] +
+        C4[7] * zx * (xx - 3 * yy) * sh_params[:, 23] +
+        C4[8] * (xx * (xx - 3 * yy) - yy * (3 * xx - yy)) * sh_params[:, 24]
     )
 
     return result

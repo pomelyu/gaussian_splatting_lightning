@@ -52,7 +52,9 @@ def computeConv2D(
         ], dim=-1).reshape(N, 3, 3)
     assert conv3D.shape == (N, 3, 3)
 
-    return T @ conv3D @ T.transpose(1, 2)
+    conv2D = T.transpose(1, 2) @ conv3D.transpose(1, 2) @ T
+    conv2D = conv2D[:, :2, :2]
+    return conv2D
 
 # calculate covariance matrix from scaling and rotation
 # eq6. Covariance = R @ S @ S^T @ R^T
