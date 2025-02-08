@@ -64,6 +64,7 @@ def rasterize_gaussian(
     # Next, we need to compute the inversed matrix of covarinace_2d
     # so we can get the pixel strength from G = exp((x-mu)E^-1(x-mu)^T)
     inv_conv2D, invalid_mask, h_convolution_scaling = inverse_conv2D(conv2D)
+    opacities = opacities * h_convolution_scaling[:, None]
     visible_mask[invalid_mask] = False
 
     # To find which gaussian contributes to a pixel, we selects gaussians which cover the pixel

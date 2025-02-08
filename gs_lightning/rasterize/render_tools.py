@@ -23,10 +23,12 @@ def computeConv2D(
     points = apply_extrinsic_matrix(mean3d, viewmatrix)
 
     z = points[:, 2]
-    lim_x = 1.3 * tan_fovx * z
-    lim_y = 1.3 * tan_fovy * z
-    x = torch.clamp(points[:, 0], -lim_x, lim_x)
-    y = torch.clamp(points[:, 1], -lim_y, lim_y)
+    lim_x = 1.3 * tan_fovx
+    lim_y = 1.3 * tan_fovy
+    txtz = points[:, 0] / z
+    tytz = points[:, 1] / z
+    x = torch.clamp(txtz, -lim_x, lim_x) * z
+    y = torch.clamp(tytz, -lim_y, lim_y) * z
 
     J = torch.zeros(N, 3, 3).to(points)
     J[:, 0, 0] = focal_x / z
@@ -34,7 +36,7 @@ def computeConv2D(
     J[:, 1, 1] = focal_y / z
     J[:, 1, 2] = -(focal_y * y) / (z**2)
 
-    W = viewmatrix[None, :3, :3].expand(N, -1, -1)
+    W = viewmatrix[None, :3, :3].expand(N, -1, -1).transpose(1, 2)
     T = W @ J
 
     if conv3D.shape == (N, 6):
