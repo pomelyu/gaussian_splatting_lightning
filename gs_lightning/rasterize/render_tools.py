@@ -37,7 +37,7 @@ def computeConv2D(
     J[:, 1, 2] = -(focal_y * y) / (z**2)
 
     W = viewmatrix[None, :3, :3].expand(N, -1, -1).transpose(1, 2)
-    T = W @ J
+    T = J @ W
 
     if conv3D.shape == (N, 6):
         conv3D = torch.stack([
@@ -47,7 +47,7 @@ def computeConv2D(
         ], dim=-1).reshape(N, 3, 3)
     assert conv3D.shape == (N, 3, 3)
 
-    conv2D = T.transpose(1, 2) @ conv3D.transpose(1, 2) @ T
+    conv2D = T @ conv3D.transpose(1, 2) @ T.transpose(1, 2)
     conv2D = conv2D[:, :2, :2]
     return conv2D
 
@@ -60,8 +60,8 @@ def computeConv3D(
 ):
     R = K.geometry.Quaternion(rotation).matrix()    # (N, 3, 3)
     S = torch.diag_embed(scale * scale_modifier)    # (N, 3, 3)
-    L = S @ R
-    covar = L.transpose(1, 2) @ L                   # (N, 3, 3)
+    L = R @ S                       # equal to S * R in glm
+    covar = L @ L.transpose(1, 2)   # (N, 3, 3)
     # use the low diagnoal elements to make sure the matrix is symmetric
     out = torch.stack([
         covar[:, 0, 0], covar[:, 0, 1], covar[:, 0, 2],
