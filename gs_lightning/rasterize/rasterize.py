@@ -20,6 +20,11 @@ BLOCK_X = 16
 BLOCK_Y = 16
 NUM_CHANNELS = 3
 
+def markVisible(means3D: torch.Tensor, viewmatrix: torch.Tensor, projmatrix: torch.Tensor) -> torch.Tensor:
+    p_view = apply_extrinsic_matrix(means3D, viewmatrix)
+    p_proj = apply_projection_matrix(means3D, projmatrix)
+    return in_frustum(p_view, p_proj)
+
 def rasterize_gaussian(
     # Gaussian splats parameters
     means3D: torch.Tensor,      # (N, 3), gaussian splats position in world coordinates
