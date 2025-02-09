@@ -74,25 +74,25 @@ def inverse_conv2D(conv2D: Tensor, h_var: float = 0.3, antialias: bool = False) 
     N = len(conv2D)
     assert conv2D.shape == (N, 2, 2)
 
-    det = conv2D[:, 0, 0] * conv2D[:, 1, 1] - conv2D[:, 0, 1] * conv2D[:, 0, 1]
+    det_cov = conv2D[:, 0, 0] * conv2D[:, 1, 1] - conv2D[:, 0, 1] * conv2D[:, 0, 1]
 
     conv2D[:, 0, 0] += h_var
     conv2D[:, 1, 1] += h_var
     det_cov_plus_h_cov = conv2D[:, 0, 0] * conv2D[:, 1, 1] - conv2D[:, 0, 1] * conv2D[:, 0, 1]
 
     if antialias:
-        h_convolution_scaling = torch.sqrt(torch.clamp_min(det / det_cov_plus_h_cov, 0.000025))
+        h_convolution_scaling = torch.sqrt(torch.clamp_min(det_cov / det_cov_plus_h_cov, 0.000025))
     else:
-        h_convolution_scaling = torch.ones_like(det)
+        h_convolution_scaling = torch.ones_like(det_cov)
     det = det_cov_plus_h_cov
 
     invalid_mask = (det == 0)
     det_inv = 1. / torch.clamp_min(det, 1e-5)
 
-    inv_conv2D = torch.cat([
+    inv_conv2D = torch.stack([
         conv2D[:, 1, 1] * det_inv, -conv2D[:, 0, 1] * det_inv,
         -conv2D[:, 1, 0] * det_inv, conv2D[:, 0, 0] * det_inv,
-    ]).reshape(-1, 2, 2)
+    ], -1).reshape(-1, 2, 2)
     return inv_conv2D, invalid_mask, h_convolution_scaling
 
 def compute_extent_and_radius(conv2D: Tensor, radius_factor=3.0, eps=1e-1) -> Tensor:
