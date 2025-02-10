@@ -104,14 +104,6 @@ def rasterize_gaussian(
     canvas = torch.zeros(image_height, image_width, NUM_CHANNELS).to(device)
     depth_canvas = torch.zeros(image_height, image_width).to(device)
 
-    # for x, y in p_image[visible_mask]:
-    #     x, y = int(x), int(y)
-    #     if 0 <= x < image_width and 0 <= y < image_height:
-    #         canvas[y, x] = 1.0
-    # canvas = torch.moveaxis(canvas, -1, 0)
-    # depth_canvas = depth_canvas.unsqueeze(0)
-    # return canvas, radius, depth_canvas
-
     pbar = tqdm(total=grid[0]*grid[1], desc="rendering pixels", unit="step")
     for y in range(grid[1]):
         for x in range(grid[0]):
