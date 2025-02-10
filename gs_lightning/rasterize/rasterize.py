@@ -93,10 +93,13 @@ def rasterize_gaussian(
     p_image = ndc2Pix(p_proj, image_width, image_height)
     gaussian_in_tiles = calculate_gaussian_in_tiles(p_image, radius, grid, block)
 
-    rect = get_covered_tiles(p_image, radius, grid, block)
-    invalid_mask = (rect[:, 2] - rect[:, 0]) * (rect[:, 3] - rect[:, 1]) == 0
-    visible_mask[invalid_mask] = False
-    radius[invalid_mask] = 0
+    # reject the invalid gaussian splats.
+    # Note that we have already filtered these splats in calculate_gaussian_in_tiles
+    # As a result, the following code is only used to update visible_mask and radius
+    # rect = get_covered_tiles(p_image, radius, grid, block)
+    # invalid_mask = (rect[:, 2] - rect[:, 0]) * (rect[:, 3] - rect[:, 1]) == 0
+    # visible_mask[invalid_mask] = False
+    # radius[invalid_mask] = 0
 
     canvas = torch.zeros(image_height, image_width, NUM_CHANNELS).to(device)
     depth_canvas = torch.zeros(image_height, image_width).to(device)
@@ -134,6 +137,8 @@ def calculate_gaussian_in_tiles(
     gaussian_in_tiles = [[] for _ in range(grid[0] * grid[1])]
     rect = get_covered_tiles(point_images, radius, grid, block)
     for i, (x_min, y_min, x_max, y_max) in tqdm(enumerate(rect), total=len(rect)):
+        if radius[i] == 0:
+            continue
         if (x_max - x_min) * (y_max - y_min) == 0:
             continue
         for y in range(y_min, y_max):
@@ -160,11 +165,12 @@ def render_tile(
     # sort gaussians by their depth value
     depth = depth[gs_in_tile]
     sorted_idx = torch.argsort(depth)
-    p_image = p_image[sorted_idx]
-    color = color[sorted_idx]
-    opacity = opacity[sorted_idx]
     depth = depth[sorted_idx]
-    inv_conv2D = inv_conv2D[sorted_idx]
+
+    p_image = p_image[gs_in_tile][sorted_idx]
+    color = color[gs_in_tile][sorted_idx]
+    opacity = opacity[gs_in_tile][sorted_idx]
+    inv_conv2D = inv_conv2D[gs_in_tile][sorted_idx]
     for y in range(offset_y, min(offset_y + block[1], H)):
         for x in range(offset_x, min(offset_x + block[0], W)):
             render_pixel(canvas, depth_canvas, x, y, p_image, color, opacity, depth, inv_conv2D, background)
