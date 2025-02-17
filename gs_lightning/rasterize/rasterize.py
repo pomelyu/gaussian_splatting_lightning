@@ -110,7 +110,10 @@ def rasterize_gaussian(
             tile_id = y * grid[0] + x
             offset_x = x * block[0]
             offset_y = y * block[1]
-            render_tile(
+            # render_tile(
+            #     canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
+            #     p_image, color, opacities, depths, inv_conv2D, background, block)
+            render_tile2(
                 canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
                 p_image, color, opacities, depths, inv_conv2D, background, block)
             pbar.update(1)
@@ -200,3 +203,56 @@ def render_pixel(
     w = torch.where(remain_alpha_mask, alpha * remain_alpha[:-1], 0)
     canvas[y, x] = (w * color).sum(0) + remain_alpha[-1] * background
     depth_canvas[y, x] = (w / depth[:, None]).sum()
+
+def render_tile2(
+    canvas: torch.Tensor,
+    depth_canvas: torch.Tensor,
+    offset_x: int,
+    offset_y: int,
+    gs_in_tile: List[int],
+    p_image: torch.Tensor,
+    color: torch.Tensor,
+    opacity: torch.Tensor,
+    depth: torch.Tensor,
+    inv_conv2D: torch.Tensor,
+    background: torch.Tensor,
+    block: tuple,
+    threshold: float = 1. / 255
+):
+    H, W = canvas.shape[:2]
+    # sort gaussians by their depth value
+    depth = depth[gs_in_tile]
+    sorted_idx = torch.argsort(depth)
+    depth = depth[sorted_idx]
+
+    p_image = p_image[gs_in_tile][sorted_idx]
+    color = color[gs_in_tile][sorted_idx]
+    opacity = opacity[gs_in_tile][sorted_idx]
+    inv_conv2D = inv_conv2D[gs_in_tile][sorted_idx]
+
+    coord_y, coord_x = torch.meshgrid(
+        torch.arange(offset_y, min(offset_y + block[1], H)).to(p_image),
+        torch.arange(offset_x, min(offset_x + block[0], W)).to(p_image),
+    )
+    th, tw = coord_y.shape
+
+    coord = torch.stack([coord_x, coord_y], -1).reshape(-1, 2)  # (Np, 2)
+
+    weight = compute_gaussian_weight(coord, p_image, inv_conv2D)    # (Ng, Np)
+    alpha = torch.clamp_max(weight * opacity, 0.99) # (Ng, Np)
+
+    Ng, Np = alpha.shape
+
+    alpha_mask = alpha > threshold  # (Ng, Np)
+    alpha = torch.where(alpha_mask, alpha, 0)
+    one_minus_alpha = torch.ones(Ng + 1, Np).to(alpha)
+    one_minus_alpha[1:] = (1 - alpha)
+    remain_alpha = torch.cumprod(one_minus_alpha, 0)    # (Ng+1, Np)
+    remain_alpha_mask = remain_alpha[:-1] > 0.0001  # (Ng, Np)
+
+    w = torch.where(remain_alpha_mask, alpha * remain_alpha[:-1], 0)
+    render_color = (w[:, :, None] * color[:, None, :]).sum(0) + remain_alpha[-1][:, None] * background[None, :] # (Np, 3)
+    render_depth = (w[:, :] / depth[:, None]).sum(0)    # (Np)
+
+    canvas[offset_y:offset_y+th, offset_x:offset_x+tw] = render_color.reshape(th, tw, 3)
+    depth_canvas[offset_y:offset_y+th, offset_x:offset_x+tw] = render_depth.reshape(th, tw)
