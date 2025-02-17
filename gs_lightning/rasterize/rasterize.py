@@ -186,23 +186,17 @@ def render_pixel(
     background: torch.Tensor,
     threshold: float = 1. / 255
 ) -> None:
-    coord = torch.Tensor([[x, y]]).to(p_image.device)
-    weight = compute_gaussian_weight(coord, p_image, inv_conv2D)
-    alpha = torch.clamp_max(weight * opacity.squeeze(-1), 0.99)
+    coord = torch.Tensor([[x, y]]).to(p_image.device)   # (1, 2)
+    weight = compute_gaussian_weight(coord, p_image, inv_conv2D)    # (N, 1)
+    alpha = torch.clamp_max(weight * opacity, 0.99)
 
     alpha_mask = alpha > threshold
-    alpha = alpha[alpha_mask]
-    one_minus_alpha = torch.ones(len(alpha) + 1).to(alpha)
+    alpha = torch.where(alpha_mask, alpha, 0)
+    one_minus_alpha = torch.ones(len(alpha) + 1, 1).to(alpha)
     one_minus_alpha[1:] = (1 - alpha)
     remain_alpha = torch.cumprod(one_minus_alpha, 0)
     remain_alpha_mask = remain_alpha[:-1] > 0.0001
 
-    w = alpha[remain_alpha_mask] * remain_alpha[:-1][remain_alpha_mask]
-    if len(w) == 0:
-        canvas[y, x] += background
-        return
-
-    canvas[y, x] = (w[:, None] * color[alpha_mask][remain_alpha_mask]).sum(0)
-    if remain_alpha_mask[-1]:
-        canvas[y, x] += remain_alpha[-1] * background
-    depth_canvas[y, x] = (w * (1 / depth[alpha_mask][remain_alpha_mask])).sum() 
+    w = torch.where(remain_alpha_mask, alpha * remain_alpha[:-1], 0)
+    canvas[y, x] = (w * color).sum(0) + remain_alpha[-1] * background
+    depth_canvas[y, x] = (w / depth[:, None]).sum()

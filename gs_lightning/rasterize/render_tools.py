@@ -139,6 +139,6 @@ def get_covered_tiles(p: Tensor, max_radius: Tensor, grid: tuple, block: tuple) 
     return torch.stack([x_min, y_min, x_max, y_max], -1)
 
 def compute_gaussian_weight(pixel_coord: Tensor, gaussian_mean: Tensor, inv_conv2D: Tensor) -> Tensor:
-    diff = (gaussian_mean - pixel_coord)[:, None, :]    # (N, 1, 2)
-    power = -0.5 * diff @ inv_conv2D @ diff.transpose(1, 2)
-    return torch.exp(power).squeeze(-1).squeeze(-1)
+    diff = gaussian_mean[:, None, :] - pixel_coord[None, :, :]   # (Ng, Np, 2)
+    power = -0.5 * diff @ inv_conv2D @ diff.transpose(1, 2)   # (Ng, Np, Np)
+    return torch.exp(torch.diagonal(power, offset=0, dim1=1, dim2=2))   # (Ng, Np)
