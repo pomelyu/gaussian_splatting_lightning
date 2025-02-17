@@ -8,7 +8,7 @@ from plyfile import PlyData
 from plyfile import PlyElement
 from torch import nn
 
-from gs_lightning.rasterizer_python.forward import computeConv3D
+from gs_lightning.rasterize.render_tools import computeConv3D
 from gs_lightning.utils.colmap import get_nerf_norm
 from gs_lightning.utils.math import distCUDA2
 from gs_lightning.utils.math import inverse_sigmoid
