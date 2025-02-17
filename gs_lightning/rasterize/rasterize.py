@@ -126,17 +126,23 @@ def calculate_gaussian_in_tiles(
     grid: tuple,
     block: tuple,
 ) -> torch.Tensor:
-    gaussian_in_tiles = [[] for _ in range(grid[0] * grid[1])]
+    N = len(radius)
     rect = get_covered_tiles(point_images, radius, grid, block)
-    for i, (x_min, y_min, x_max, y_max) in tqdm(enumerate(rect), total=len(rect)):
-        if radius[i] == 0:
-            continue
-        if (x_max - x_min) * (y_max - y_min) == 0:
-            continue
-        for y in range(y_min, y_max):
-            for x in range(x_min, x_max):
-                tile_id = y * grid[0] + x
-                gaussian_in_tiles[tile_id].append(i)
+
+    x_grid = torch.arange(grid[0]).to(point_images.device)
+    y_grid = torch.arange(grid[1]).to(point_images.device)
+    y_grid, x_grid = torch.meshgrid(y_grid, x_grid)
+
+    x_grid = x_grid[None, :, :].expand(N, -1, -1)
+    y_grid = y_grid[None, :, :].expand(N, -1, -1)
+
+    x_min = rect[:, 0].view(-1, 1, 1)
+    y_min = rect[:, 1].view(-1, 1, 1)
+    x_max = rect[:, 2].view(-1, 1, 1)
+    y_max = rect[:, 3].view(-1, 1, 1)
+
+    gaussian_in_tiles = (x_grid >= x_min) & (x_grid < x_max) & (y_grid >= y_min) & (y_grid < y_max)
+    gaussian_in_tiles = gaussian_in_tiles.view(N, -1).transpose(0, 1)
     return gaussian_in_tiles
 
 def render_tile(
