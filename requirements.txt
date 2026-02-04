@@ -1,0 +1,16 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+submodules/diff-gaussian-rasterization
+submodules/fused-ssim
+imageio
+kornia
+mlconfig
+mlflow
+ninja
+opencv-python
+plyfile
+pycolmap
+pytorch-lightning
+scipy
+torch<2.9.0
+torchvision
+tqdm
