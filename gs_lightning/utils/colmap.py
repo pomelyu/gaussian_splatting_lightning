@@ -1,17 +1,16 @@
 import numpy as np
 import pycolmap
-from pycolmap import MapImageIdToImage
 
 
 def get_nerf_norm(colmap_path: str):
     reconstruction = pycolmap.Reconstruction(colmap_path)
     # {1: Image(image_id=1, camera_id=1, name="_DSC8874.JPG", triangulated=657/9322)}
-    image_info: MapImageIdToImage = reconstruction.images
+    image_info = reconstruction.images
 
     cameras = []
     for info in image_info.values():
         w2c = np.eye(4)
-        w2c[:3, :] = info.cam_from_world.matrix()
+        w2c[:3, :] = info.cam_from_world().matrix()
         c2w = np.linalg.inv(w2c)
         cameras.append(c2w[:3, -1:])
 

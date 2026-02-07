@@ -22,7 +22,7 @@ class GSWarmUpExponentialDecayScheduler(LRScheduler):
         self.lr_delay_multi = lr_delay_multi
         self.max_steps = max_steps
 
-        super().__init__(optimizer, last_epoch=-1, verbose=False)
+        super().__init__(optimizer, last_epoch=-1)
 
     def get_lr(self):
         current_step = self.last_epoch

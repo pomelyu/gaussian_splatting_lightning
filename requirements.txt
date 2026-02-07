@@ -8,7 +8,7 @@ mlflow
 ninja
 opencv-python
 plyfile
-pycolmap
+pycolmap>=3.10.0
 pytorch-lightning
 scipy
 torch<2.9.0

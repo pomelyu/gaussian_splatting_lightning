@@ -8,8 +8,6 @@ import mlconfig
 import numpy as np
 import pycolmap
 import torch
-from pycolmap import MapCameraIdToCamera
-from pycolmap import MapImageIdToImage
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
@@ -49,9 +47,9 @@ class ColmapDataset(Dataset):
 
         reconstruction = pycolmap.Reconstruction(colmap_path)
         # {1: Camera(camera_id=1, model=PINHOLE, width=5068, height=3326, params=[4219.170711, 4205.602294, 2534.000000, 1663.000000] (fx, fy, cx, cy))}
-        camera_info: MapCameraIdToCamera = reconstruction.cameras
+        camera_info = reconstruction.cameras
         # {1: Image(image_id=1, camera_id=1, name="_DSC8874.JPG", triangulated=657/9322)}
-        image_info: MapImageIdToImage = reconstruction.images
+        image_info = reconstruction.images
 
         self.image_indices = ColmapDataset.load_image_idx(image_idx)
         if self.image_indices is None:
@@ -76,16 +74,16 @@ class ColmapDataset(Dataset):
         self.cached_data[index] = data
         return data
     
-    def build_item(self, index, camera_info: MapCameraIdToCamera, image_info: MapImageIdToImage) -> dict:
+    def build_item(self, index, camera_info, image_info) -> dict:
         image_idx = self.image_indices[index]
-        image_info: MapImageIdToImage = image_info[image_idx]
-        camera_info: MapCameraIdToCamera = camera_info[image_info.camera_id]
+        image_info = image_info[image_idx]
+        camera_info = camera_info[image_info.camera_id]
 
         image_name = image_info.name
         image = self.load_image_to_tensor(self.image_folder, image_name)
 
         world_view_transform = np.eye(4)
-        world_view_transform[:, :3] = image_info.cam_from_world.matrix().T
+        world_view_transform[:, :3] = image_info.cam_from_world().matrix().T
         world_view_transform = torch.Tensor(world_view_transform)
         camera_center = world_view_transform.inverse()[3, :3]
         projection_matrix = get_projection_matrix(

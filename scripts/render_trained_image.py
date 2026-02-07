@@ -9,8 +9,6 @@ import torch
 import torchvision
 from diff_gaussian_rasterization import GaussianRasterizationSettings
 from diff_gaussian_rasterization import GaussianRasterizer
-from pycolmap import MapCameraIdToCamera
-from pycolmap import MapImageIdToImage
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.rasterize import rasterize_gaussian
@@ -45,9 +43,9 @@ def main():
 
     reconstruction = pycolmap.Reconstruction(args.colmap)
     # {1: Camera(camera_id=1, model=PINHOLE, width=5068, height=3326, params=[4219.170711, 4205.602294, 2534.000000, 1663.000000] (fx, fy, cx, cy))}
-    cameras: MapCameraIdToCamera = reconstruction.cameras
+    cameras = reconstruction.cameras
     # {1: Image(image_id=1, camera_id=1, name="_DSC8874.JPG", triangulated=657/9322)}
-    images: MapImageIdToImage = reconstruction.images
+    images = reconstruction.images
 
     fid = args.frame
     cid = images[fid].camera_id
@@ -64,7 +62,7 @@ def main():
     znear = 0.01
     camera = cameras[cid]
     world_view_transform = np.eye(4)
-    world_view_transform[:, :3] = images[fid].cam_from_world.matrix().T
+    world_view_transform[:, :3] = images[fid].cam_from_world().matrix().T
     world_view_transform = torch.Tensor(world_view_transform).to(device)
     camera_center = world_view_transform.inverse()[3, :3].to(device)
     projection_matrix = get_projection_matrix(camera.focal_length_x, camera.focal_length_y, camera.width, camera.height, znear, zfar).T
