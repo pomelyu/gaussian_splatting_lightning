@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-
+import time
 import cv2
 import imageio as iio
 import numpy as np
@@ -15,6 +15,11 @@ from gs_lightning.rasterize import rasterize_gaussian
 from gs_lightning.utils.camera import get_projection_matrix
 
 
+
+def get_timestamp():
+    torch.cuda.synchronize()
+    return time.perf_counter()
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("model", type=str, help="path to training checkpoint(.ply)")
@@ -23,7 +28,7 @@ def main():
     parser.add_argument("--down_scale", type=int, help="down scale image", default=1)
     parser.add_argument("--frame", "-n", type=int, default=10, help="frame number")
     parser.add_argument("--output", "-o", type=str, default="results")
-    parser.add_argument("--use_python", action="store_true", help="use python insted cuda implementation")
+    parser.add_argument("--use_pytorch", action="store_true", help="use pytorch insted cuda implementation")
     # Model Params
     parser.add_argument("--sh_degree", type=int, default=3)
     parser.add_argument("--white_background", action="store_true")
@@ -69,7 +74,8 @@ def main():
     projection_matrix = torch.Tensor(projection_matrix).to(device)
     full_proj_transform = world_view_transform @ projection_matrix
 
-    if args.use_python:
+    t0 = get_timestamp()
+    if args.use_pytorch:
         with torch.no_grad():
             rendered_image, radii, depth_image = rasterize_gaussian(
                 means3D=gaussians.get_xyz(),
@@ -116,6 +122,8 @@ def main():
             rotations=gaussians.get_rotation(),
             cov3D_precomp=None,
         )
+    t1 = get_timestamp()
+    print(f"rendering {W:d}x{H:d} takes: {t1 - t0:.2f}s = {(t1 - t0)*1000:.2f}ms")
 
     rendered_image = rendered_image.clamp(0, 1)
     depth_image = depth_image.clamp(0, 1)
