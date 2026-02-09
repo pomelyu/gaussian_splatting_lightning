@@ -110,9 +110,12 @@ def rasterize_gaussian(
             tile_id = y * grid[0] + x
             offset_x = x * block[0]
             offset_y = y * block[1]
+            # Option A: Use for loop to render every pixel
             # render_tile(
             #     canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
             #     p_image, color, opacities, depths, inv_conv2D, background, block)
+
+            # Option B: Apply batch operation to all the pixels in a tile
             render_tile_noloop(
                 canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
                 p_image, color, opacities, depths, inv_conv2D, background, block)
@@ -153,7 +156,7 @@ def render_tile(
     depth_canvas: torch.Tensor,
     offset_x: int,
     offset_y: int,
-    gs_in_tile: List[int],
+    gs_in_tile: torch.LongTensor,   # Mask
     p_image: torch.Tensor,
     color: torch.Tensor,
     opacity: torch.Tensor,
@@ -209,7 +212,7 @@ def render_tile_noloop(
     depth_canvas: torch.Tensor,
     offset_x: int,
     offset_y: int,
-    gs_in_tile: List[int],
+    gs_in_tile: torch.LongTensor,   # Mask
     p_image: torch.Tensor,
     color: torch.Tensor,
     opacity: torch.Tensor,
