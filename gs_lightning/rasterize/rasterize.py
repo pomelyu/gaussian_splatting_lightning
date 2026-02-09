@@ -113,7 +113,7 @@ def rasterize_gaussian(
             # render_tile(
             #     canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
             #     p_image, color, opacities, depths, inv_conv2D, background, block)
-            render_tile2(
+            render_tile_noloop(
                 canvas, depth_canvas, offset_x, offset_y, gaussian_in_tiles[tile_id],
                 p_image, color, opacities, depths, inv_conv2D, background, block)
             pbar.update(1)
@@ -204,7 +204,7 @@ def render_pixel(
     canvas[y, x] = (w * color).sum(0) + remain_alpha[-1] * background
     depth_canvas[y, x] = (w / depth[:, None]).sum()
 
-def render_tile2(
+def render_tile_noloop(
     canvas: torch.Tensor,
     depth_canvas: torch.Tensor,
     offset_x: int,
