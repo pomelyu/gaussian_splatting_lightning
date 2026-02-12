@@ -40,12 +40,11 @@ def test_colmap_dataset():
             # draw projected 2d points
             canvas = np.ones((H, W, 3), dtype=np.uint8) * 255
             for pt, color in zip(points2d.int().numpy(), points3d_colors):
-                # RGB -> BGR
-                color = tuple(color.tolist()[::-1])
+                color = tuple(color.tolist())
                 cv2.circle(canvas, pt, 1, color, -1)
             vis.append(np.concatenate([image, canvas], 0))
         vis = np.concatenate(vis, 1)
-        cv2.imwrite(str(out_dir / f"image_{i:0>3d}.jpg"), cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))
+        cv2.imwrite(str(out_dir / f"image_{i:0>3d}.jpg"), cv2.cvtColor(vis, cv2.COLOR_RGB2BGR))
 
 if __name__ == "__main__":
     test_colmap_dataset()

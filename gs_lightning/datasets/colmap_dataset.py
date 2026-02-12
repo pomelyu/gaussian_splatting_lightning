@@ -123,6 +123,13 @@ class ColmapDataset(Dataset):
 
     def load_image_to_tensor(self, image_folder: str, image_name: str) -> torch.Tensor:
         image = load_image(Path(image_folder) / image_name)
+        if image.shape[-1] == 4:
+            image_rgb = image[..., :3].astype(np.float32)
+            alpha = image[..., 3:].astype(np.float32) / 255.0
+            bg_np = self.background.numpy() * 255
+            image = image_rgb * alpha + (1.0 - alpha) * bg_np[None, None, :]
+            image = image.astype(np.uint8)
+
         H, W = image.shape[:2]
         if self.downscale is not None:
             H, W = int(H*self.downscale), int(W*self.downscale)
