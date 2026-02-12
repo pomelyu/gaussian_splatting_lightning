@@ -57,7 +57,7 @@ def main():
     image_path = images[fid].name
 
     scale = 1 / args.down_scale
-    image = iio.v3.imread(Path(args.image) / image_path)
+    image = iio.v3.imread(Path(args.image) / image_path)[..., :3]
     H, W = image.shape[:2]
     H, W = int(H*scale), int(W*scale)
     image = cv2.resize(image, (W, H))
