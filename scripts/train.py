@@ -39,6 +39,7 @@ def main():
         val_check_interval=config.cfg_trainer.valid_interval,
         log_every_n_steps=config.cfg_trainer.print_interval,
         enable_checkpointing=False,
+        use_distributed_sampler=False,
     )
 
     # Setup meta
