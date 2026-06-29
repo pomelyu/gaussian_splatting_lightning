@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from dataclasses import dataclass
-from typing import Tuple, List
+from typing import List
+from typing import Tuple
 
 import mlconfig
 import numpy as np
@@ -11,7 +12,6 @@ from fused_ssim import fused_ssim
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule
 from torch import nn
-import torch.utils
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.scheduler import GSWarmUpExponentialDecayScheduler

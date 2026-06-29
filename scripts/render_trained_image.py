@@ -1,19 +1,17 @@
 import argparse
-from pathlib import Path
 import time
+from pathlib import Path
+
 import cv2
 import imageio as iio
 import numpy as np
 import pycolmap
 import torch
 import torchvision
-from diff_gaussian_rasterization import GaussianRasterizationSettings
-from diff_gaussian_rasterization import GaussianRasterizer
 
 from gs_lightning.modules import GaussianModel
 from gs_lightning.rasterize import rasterize_gaussian
 from gs_lightning.utils.camera import get_projection_matrix
-
 
 
 def get_timestamp():
@@ -28,7 +26,7 @@ def main():
     parser.add_argument("--down_scale", type=int, help="down scale image", default=1)
     parser.add_argument("--frame", "-n", type=int, default=10, help="frame number")
     parser.add_argument("--output", "-o", type=str, default="results")
-    parser.add_argument("--use_pytorch", action="store_true", help="use pytorch insted cuda implementation")
+    parser.add_argument("--engine", type=str, default="gsplat", choices=["gsplat", "pytorch", "origin"])
     # Model Params
     parser.add_argument("--sh_degree", type=int, default=3)
     parser.add_argument("--white_background", action="store_true")
@@ -75,7 +73,7 @@ def main():
     full_proj_transform = world_view_transform @ projection_matrix
 
     t0 = get_timestamp()
-    if args.use_pytorch:
+    if args.engine == "pytorch":
         with torch.no_grad():
             rendered_image, radii, depth_image = rasterize_gaussian(
                 means3D=gaussians.get_xyz(),
@@ -94,7 +92,40 @@ def main():
                 background=background,
                 sh_degree=gaussians.active_sh_degree,
             )
-    else:
+    elif args.engine == "gsplat":
+        from gsplat import rasterization
+
+        K = torch.tensor([
+            [camera.focal_length_x * W / camera.width, 0, W / 2.0],
+            [0, camera.focal_length_y * H / camera.height, H / 2.0],
+            [0, 0, 1],
+        ], device="cuda")
+
+        render_colors, render_alphas, info = rasterization(
+            means=gaussians.get_xyz(),          # [N, 3]
+            quats=gaussians.get_rotation(),     # [N, 4]
+            scales=gaussians.get_scaling(),     # [N, 3]
+            opacities=gaussians.get_opacity().squeeze(-1),  # [N,]
+            colors=gaussians.get_features(),
+            viewmats=world_view_transform.transpose(0, 1)[None],    # [1, 4, 4]
+            Ks=K[None],  # [1, 3, 3]
+            backgrounds=background[None],
+            width=W,
+            height=H,
+            packed=False,
+            sh_degree=gaussians.active_sh_degree,
+            render_mode="RGB+ED",
+        )
+        # [1, H, W, 4] -> [3, H, W], [1, H, W]
+        rendered_image = render_colors[0][..., :3].permute(2, 0, 1)
+        depth_image = render_colors[0][..., 3:].permute(2, 0, 1)
+        depth_image = depth_image.max() - depth_image
+        radii = info["radii"].squeeze(0) # [N,]
+
+    elif args.engine == "origin":
+        from diff_gaussian_rasterization import GaussianRasterizationSettings
+        from diff_gaussian_rasterization import GaussianRasterizer
+
         raster_settings = GaussianRasterizationSettings(
             image_height=H,
             image_width=W,
@@ -122,11 +153,14 @@ def main():
             rotations=gaussians.get_rotation(),
             cov3D_precomp=None,
         )
+    else:
+        raise ValueError(f"Unknown rendering engine: {args.engin}")
+
     t1 = get_timestamp()
     print(f"rendering {W:d}x{H:d} takes: {t1 - t0:.2f}s = {(t1 - t0)*1000:.2f}ms")
 
     rendered_image = rendered_image.clamp(0, 1)
-    depth_image = depth_image.clamp(0, 1)
+    depth_image = (depth_image - depth_image.min()) / (depth_image.max() - depth_image.min())
 
     gt = torch.Tensor(np.moveaxis(image / 255., -1, 0))
     rendered_image = rendered_image.cpu()
